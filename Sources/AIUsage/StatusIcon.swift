@@ -35,7 +35,9 @@ enum StatusIcon {
 
     private static let height: CGFloat = 18
     private static let mark: CGFloat = 13
-    private static let ring: CGFloat = 14
+    /// As wide as the bar can take, to leave the window initial inside it as
+    /// much room as possible.
+    private static let ring: CGFloat = 16
     private static let partGap: CGFloat = 3
     private static let segmentGap: CGFloat = 7
     private static let lineWidth: CGFloat = 2
@@ -50,10 +52,18 @@ enum StatusIcon {
         .foregroundColor: NSColor.labelColor,
     ]
 
-    /// Sized to clear the ring's stroke on both sides at any scale factor.
+    /// Sized to clear the ring's stroke on both sides, and bold because on a
+    /// display without a HiDPI backing store this is five pixels tall.
+    ///
+    /// Full `labelColor`, exactly as the percentage: it has to carry at five
+    /// pixels, and anything dimmer is the first thing to disappear. Note that
+    /// `labelColor` must be used *as is* — running it through
+    /// `withAlphaComponent` resolves the dynamic colour against whichever
+    /// appearance happens to be current, which for a stored attribute is the
+    /// light one, and the letter then vanishes into a dark menu bar.
     private static let windowAttributes: [NSAttributedString.Key: Any] = [
-        .font: NSFont.systemFont(ofSize: 8, weight: .semibold),
-        .foregroundColor: NSColor.labelColor.withAlphaComponent(0.75),
+        .font: NSFont.systemFont(ofSize: 9, weight: .bold),
+        .foregroundColor: NSColor.labelColor,
     ]
 
     static func image(segments: [Segment], parts: Parts = .all) -> NSImage {
@@ -160,11 +170,17 @@ enum StatusIcon {
 
     private static func drawWindowInitial(_ window: String, atX x: CGFloat) {
         guard let initial = windowInitial(window) else { return }
+        let attributes = windowAttributes
         let text = initial as NSString
-        let size = text.size(withAttributes: windowAttributes)
+        let size = text.size(withAttributes: attributes)
+        // Rounded, so a five-pixel letter lands on the pixel grid rather than
+        // straddling it and blurring away to nothing.
         text.draw(
-            at: NSPoint(x: x + (ring - size.width) / 2, y: (height - size.height) / 2),
-            withAttributes: windowAttributes
+            at: NSPoint(
+                x: (x + (ring - size.width) / 2).rounded(),
+                y: ((height - size.height) / 2).rounded()
+            ),
+            withAttributes: attributes
         )
     }
 
