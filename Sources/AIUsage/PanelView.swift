@@ -30,10 +30,11 @@ struct PanelView: View {
             }
         }
         .frame(width: 430)
-        // The same pane as the desktop card, which is what the design draws —
-        // the dropdown had been getting a bare rectangle, so it was missing the
-        // border and the lit top edge that make glass read as thick.
-        .glassPane(radius: Glass.panelRadius, falloff: 0.033, tone: 1, border: 0.3, shadow: false)
+        // The desktop card's pane exactly, rim included: the panel this hangs
+        // in is ours now, so its edge is the only one on screen.
+        // The shadow is the panel's own, as with the card: a SwiftUI one would
+        // be clipped by the window it is drawn inside.
+        .glassPane(radius: Glass.panelRadius, dim: 0.75, tone: 0.7, shadow: false)
         .environment(\.colorScheme, .dark)
         .onAppear { store.refreshIfStale(olderThan: 300) }
     }
@@ -74,8 +75,6 @@ struct PanelView: View {
         return "Updated \(report.updatedLabel)\(stale) · \(every)"
     }
 }
-
-// --------------------------------------------------------------------- //
 
 // --------------------------------------------------------------------- //
 

@@ -44,24 +44,30 @@ enum Glass {
         )
     }
 
-    /// The colour a blurred backdrop loses on the way through.
+    /// The design's blue, laid over the blur.
     ///
-    /// The design ends its blur with `saturate(180%)`, which is what makes the
-    /// pane read as blue glass rather than as slate. SwiftUI has no equivalent:
-    /// materials are composited by the window server, below the level a
-    /// `.saturation` modifier reaches, so the filter is a no-op on them. The
-    /// wallpaper behind the panel measures 0.56 saturation and the pane came
-    /// out at 0.21 against the design's 0.55.
+    /// The mock ends its backdrop-filter with `saturate(180%)`, which is what
+    /// makes the pane read as blue glass rather than as slate. SwiftUI has no
+    /// equivalent — materials are composited by the window server, below the
+    /// level a `.saturation` modifier reaches — so the colour goes on top of
+    /// the blur instead of being recovered from it. Sampled from the mock.
     ///
-    /// So the colour goes back on top of the blur instead of being recovered
-    /// from it. The trade is that the pane no longer tracks a backdrop of a
-    /// different hue — it is glass with a colour of its own, rather than glass
-    /// that takes the colour of what is behind it.
+    /// The trade is that the pane no longer takes the hue of whatever is behind
+    /// it. Over a blue desktop that is invisible; over an orange window it will
+    /// stay blue, exactly as the mock does.
+    ///
+    /// The mock's own stops are too light to use directly. It was drawn over a
+    /// lit teal canvas, so its top stop is `(69,118,144)` — luminance 110,
+    /// against a wallpaper that measures 47. Laying that over a dark corner of
+    /// the screen lightens the pane rather than colouring it, which is what
+    /// left the dropdown pale beside the card even with the sheen thinned. The
+    /// hue and the diagonal are the mock's; the luminance is roughly halved so
+    /// the colour lands without the lift.
     static func tone(_ strength: Double) -> LinearGradient {
         LinearGradient(
             colors: [
-                Color(red: 0.271, green: 0.463, blue: 0.565).opacity(0.58 * strength),
-                Color(red: 0.086, green: 0.188, blue: 0.263).opacity(0.92 * strength),
+                Color(red: 0.149, green: 0.255, blue: 0.311).opacity(0.58 * strength),
+                Color(red: 0.055, green: 0.121, blue: 0.169).opacity(0.92 * strength),
             ],
             startPoint: .topLeading,
             endPoint: .bottomTrailing
@@ -82,16 +88,21 @@ enum Glass {
 extension View {
     /// A whole pane of glass — the desktop card and the dropdown.
     ///
-    /// The knobs exist because the two surfaces sit in different windows, and
-    /// the same values do not come out the same on both.
-    ///
     /// - `tint` colours the sheen and the rim together, which is how the hot
     ///   state is expressed: the same card, lit red from inside.
-    /// - `lift` scales the head of the sheen and `falloff` its tail. Measured
-    ///   against the design, the pane wanted full strength at the top left and
-    ///   a third of it at the bottom right, so scaling both together could only
-    ///   ever satisfy one end.
-    /// - `tone` puts back the colour the blur loses; see `Glass.tone`.
+    /// - `dim` eases off the sheen. Translucent glass pulls whatever is behind
+    ///   it towards its own mid-tone, so the same pane darkens a bright
+    ///   backdrop and lightens a dark one: measured over the wallpaper, the
+    ///   card came out 31 below its backdrop and the dropdown 23 above its own.
+    ///   The card can be dragged onto whatever suits it; the dropdown is pinned
+    ///   under the menu bar, so it has to hold up over a dark corner.
+    ///
+    ///   It works on the sheen rather than by laying black over the blur, which
+    ///   was the first attempt: the white gradient is what adds the 23, and a
+    ///   scrim heavy enough to cancel it also cancels the blur, leaving a flat
+    ///   dark panel with no glass left in it. Thinning the white keeps the
+    ///   backdrop showing through, which is the whole effect.
+    /// - `tone` lays the design's blue over the blur; see `Glass.tone`.
     /// - `border` scales the rim. The menu bar window draws a hairline of its
     ///   own that nothing in its hierarchy accounts for — the frame view is
     ///   empty and transparent, yet its edge measures 180 where the pane
@@ -101,16 +112,15 @@ extension View {
     func glassPane(
         radius: CGFloat,
         tint: Color? = nil,
-        lift: Double = 1,
-        falloff: Double = 0.06,
-        tone: Double = 0,
         border: Double = 1,
+        dim: Double = 0,
+        tone: Double = 0,
         shadow: Bool = true
     ) -> some View {
         let sheen = Glass.sheen(
             tint: tint ?? .white,
-            top: (tint == nil ? 0.18 : 0.20) * lift,
-            bottom: falloff
+            top: (tint == nil ? 0.18 : 0.20) * (1 - dim),
+            bottom: 0.06 * (1 - dim)
         )
         // The hot state borrows the design's red border, `rgba(255,140,140,0.34)`.
         let rim = Glass.rim(
