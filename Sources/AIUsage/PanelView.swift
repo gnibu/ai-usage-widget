@@ -395,6 +395,17 @@ private struct CappedScroll<Content: View>: View {
     private var hiddenAbove: Bool { viewportHeight > 0 && offset < -0.5 }
     private var hiddenBelow: Bool { viewportHeight > 0 && contentHeight + offset - viewportHeight > 0.5 }
 
+    /// A ScrollView has no height of its own to offer, so `maxHeight` alone
+    /// leaves the window hosting it free to settle on something far shorter —
+    /// which is how the settings tab came out a third of its cap. Measuring the
+    /// content and asking for exactly what it needs, up to the cap, gives the
+    /// window a number it cannot argue with. Before the first measurement the
+    /// cap is the better guess: too tall corrects downwards on the same pass,
+    /// too short leaves the panel visibly stunted.
+    private var height: CGFloat {
+        contentHeight > 0 ? min(maxHeight, contentHeight) : maxHeight
+    }
+
     var body: some View {
         ScrollView {
             content.background(
@@ -410,9 +421,9 @@ private struct CappedScroll<Content: View>: View {
             )
         }
         .coordinateSpace(name: space)
-        .frame(maxHeight: maxHeight)
-        // An overlay is measured without being given a say in the layout, which
-        // is what keeps a short list sized to its content rather than the cap.
+        .frame(height: height)
+        // An overlay is measured without being given a say in the layout, so
+        // reading the viewport back cannot feed into the height above it.
         .overlay(
             GeometryReader { viewport in
                 Color.clear
