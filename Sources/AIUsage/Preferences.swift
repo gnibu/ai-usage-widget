@@ -33,6 +33,12 @@ final class Preferences: ObservableObject {
         didSet { defaults.set(menuBarSlots, forKey: Keys.menuBarSlots) }
     }
 
+    /// Hand every provider a slot before any provider gets a second one, even
+    /// when that means bumping a window that is genuinely busier.
+    @Published var menuBarFairShare: Bool {
+        didSet { defaults.set(menuBarFairShare, forKey: Keys.menuBarFairShare) }
+    }
+
     /// The free-standing card on the desktop.
     @Published var showDesktopCard: Bool {
         didSet { defaults.set(showDesktopCard, forKey: Keys.showDesktopCard) }
@@ -90,6 +96,7 @@ final class Preferences: ObservableObject {
         static let showPercent = "showPercentInMenuBar"
         static let showWindow = "showWindowInMenuBar"
         static let menuBarSlots = "menuBarSlots"
+        static let menuBarFairShare = "menuBarFairShare"
         static let showDesktopCard = "showDesktopCard"
         static let desktopCardFloats = "desktopCardFloats"
         static let desktopCardAnchor = "desktopCardAnchor"
@@ -107,6 +114,7 @@ final class Preferences: ObservableObject {
             Keys.showPercent: true,
             Keys.showWindow: true,
             Keys.menuBarSlots: 1,
+            Keys.menuBarFairShare: false,
             Keys.showDesktopCard: true,
             Keys.desktopCardFloats: false,
             Keys.usageThreshold: 90.0,
@@ -120,6 +128,7 @@ final class Preferences: ObservableObject {
         showPercentInMenuBar = defaults.bool(forKey: Keys.showPercent)
         showWindowInMenuBar = defaults.bool(forKey: Keys.showWindow)
         menuBarSlots = max(1, defaults.integer(forKey: Keys.menuBarSlots))
+        menuBarFairShare = defaults.bool(forKey: Keys.menuBarFairShare)
         showDesktopCard = defaults.bool(forKey: Keys.showDesktopCard)
         desktopCardFloats = defaults.bool(forKey: Keys.desktopCardFloats)
         usageThreshold = defaults.double(forKey: Keys.usageThreshold)

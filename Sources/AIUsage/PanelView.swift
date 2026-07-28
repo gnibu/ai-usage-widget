@@ -87,6 +87,12 @@ private struct SettingsView: View {
                 store.iconPreferenceChanged()
             }
 
+            Toggle("Always keep every provider on screen", isOn: $preferences.menuBarFairShare)
+                .disabled(preferences.menuBarSlots == 1)
+                .onChange(of: preferences.menuBarFairShare) { _, _ in
+                    store.iconPreferenceChanged()
+                }
+
             Divider()
 
             Toggle("Show card on desktop", isOn: $preferences.showDesktopCard)

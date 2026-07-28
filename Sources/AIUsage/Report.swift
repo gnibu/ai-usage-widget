@@ -88,15 +88,24 @@ struct Report: Codable, Equatable {
         Date().timeIntervalSince1970 - Double(updatedAt) > 2700
     }
 
-    /// The windows worth watching, worst first, but with every provider given a
-    /// slot before any provider gets a second one. Otherwise a busy Claude week
-    /// takes every slot and Codex is never seen at all.
-    func busiestWindows(limit: Int, now: Date = Date()) -> [(provider: Provider, window: UsageWindow)] {
+    /// The windows worth watching, worst first.
+    ///
+    /// `fairShare` gives every provider a slot before any provider gets a
+    /// second one. That keeps a quiet Codex on screen next to a loud Claude,
+    /// at the cost of bumping a window that really is busier — so it is a
+    /// choice, not the rule.
+    func busiestWindows(
+        limit: Int,
+        fairShare: Bool = false,
+        now: Date = Date()
+    ) -> [(provider: Provider, window: UsageWindow)] {
         guard limit > 0 else { return [] }
         let ranked = providers
             .filter(\.ok)
             .flatMap { provider in provider.windows.map { (provider: provider, window: $0) } }
             .sorted { Pace.severity($0.window, now: now) > Pace.severity($1.window, now: now) }
+
+        guard fairShare else { return Array(ranked.prefix(limit)) }
 
         var claimed = Set<String>()
         let leading = ranked.filter { claimed.insert($0.provider.name).inserted }

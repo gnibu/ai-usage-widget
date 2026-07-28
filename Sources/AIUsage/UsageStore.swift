@@ -55,7 +55,10 @@ final class UsageStore: ObservableObject {
 
     /// What the menu bar speaks for.
     func menuBarWindows(limit: Int) -> [(provider: Provider, window: UsageWindow)] {
-        report?.busiestWindows(limit: limit) ?? []
+        report?.busiestWindows(
+            limit: limit,
+            fairShare: Preferences.shared.menuBarFairShare
+        ) ?? []
     }
 
     func refresh() async {

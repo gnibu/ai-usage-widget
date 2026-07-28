@@ -46,9 +46,11 @@ there is no `.xcodeproj`, `build.sh` assembles the bundle by hand.
 
 **Menu bar.** The window in the most trouble, as its provider's logo, a ring
 filled to its consumption and tinted by its pace, and the percentage. Any of the
-three can be switched off, and you can widen it to as many as four windows —
-every provider gets a slot before any provider gets a second one, so Codex stays
-visible even when Claude is the loud one. The window's initial sits in the hole
+three can be switched off, and you can widen it to as many as four windows,
+which are simply the busiest ones — two Claude windows if Claude owns the two
+busiest. Tick *Always keep every provider on screen* to hand each provider a
+slot first instead, so a quiet Codex stays visible beside a loud Claude at the
+cost of bumping a window that really is busier. The window's initial sits in the hole
 of the ring (`w` week, `h` 5-hour, `s` spark week), which is the one place a
 menu bar has room to spare. Click it for the full card, a **Refresh** button and
 settings.

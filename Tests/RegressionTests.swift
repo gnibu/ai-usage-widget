@@ -11,8 +11,9 @@ enum RegressionTests {
         testColorTierOutranksPercentage()
         testProcessOutputIsReturned()
         testProcessIsTerminatedAtTimeout()
-        testEveryProviderIsSeenBeforeAnyProviderRepeats()
-        testExtraSlotsFallBackToTheNextWorstWindow()
+        testBusiestWindowsIgnoreWhoOwnsThem()
+        testFairShareGivesEveryProviderASlot()
+        testFairShareSpendsSpareSlotsOnTheNextWorstWindow()
         testShippedIconsParse()
         testArcFlagsAreReadOneCharacterWide()
         testWindowInitialSkipsDigits()
@@ -67,31 +68,30 @@ enum RegressionTests {
     // What the menu bar speaks for.
     // ----------------------------------------------------------------- //
 
-    private static func testEveryProviderIsSeenBeforeAnyProviderRepeats() {
-        // Both of the loud provider's windows outrank the quiet one's.
-        let loud = provider(name: "Claude", windows: [
-            window(percent: 95, elapsedPercent: 95),
-            window(percent: 90, elapsedPercent: 95),
-        ])
-        let quiet = provider(name: "Codex", windows: [window(percent: 1, elapsedPercent: 50)])
-        let report = Report(providers: [loud, quiet])
-
-        let picked = report.busiestWindows(limit: 2, now: now)
+    private static func testBusiestWindowsIgnoreWhoOwnsThem() {
+        // Two busy Claude windows and one idle Codex one: asking for the two
+        // busiest has to mean exactly that, twice the same provider included.
+        let picked = twoProviderReport().busiestWindows(limit: 2, now: now)
         check(
-            picked.map(\.provider.name) == ["Claude", "Codex"],
-            "a second provider must get a slot before the first provider gets two"
+            picked.map(\.provider.name) == ["Claude", "Claude"],
+            "the busiest windows must be the busiest, whoever owns them"
+        )
+        check(
+            picked.map(\.window.percent) == [95, 90],
+            "the busiest windows must come back in order"
         )
     }
 
-    private static func testExtraSlotsFallBackToTheNextWorstWindow() {
-        let loud = provider(name: "Claude", windows: [
-            window(percent: 95, elapsedPercent: 95),
-            window(percent: 90, elapsedPercent: 95),
-        ])
-        let quiet = provider(name: "Codex", windows: [window(percent: 1, elapsedPercent: 50)])
-        let report = Report(providers: [loud, quiet])
+    private static func testFairShareGivesEveryProviderASlot() {
+        let picked = twoProviderReport().busiestWindows(limit: 2, fairShare: true, now: now)
+        check(
+            picked.map(\.provider.name) == ["Claude", "Codex"],
+            "fair share must seat a second provider before the first repeats"
+        )
+    }
 
-        let picked = report.busiestWindows(limit: 3, now: now)
+    private static func testFairShareSpendsSpareSlotsOnTheNextWorstWindow() {
+        let picked = twoProviderReport().busiestWindows(limit: 3, fairShare: true, now: now)
         check(
             picked.map(\.provider.name) == ["Claude", "Codex", "Claude"],
             "a spare slot must go to the next worst window, whoever owns it"
@@ -100,6 +100,16 @@ enum RegressionTests {
             picked.map(\.window.percent) == [95, 1, 90],
             "the repeat slot must be the provider's second worst window"
         )
+    }
+
+    private static func twoProviderReport() -> Report {
+        Report(providers: [
+            provider(name: "Claude", windows: [
+                window(percent: 95, elapsedPercent: 95),
+                window(percent: 90, elapsedPercent: 95),
+            ]),
+            provider(name: "Codex", windows: [window(percent: 1, elapsedPercent: 50)]),
+        ])
     }
 
     // ----------------------------------------------------------------- //
