@@ -25,14 +25,17 @@ Two front ends draw exactly that, from the same cache file:
 
 | | [`macos/`](macos) — native app | [`python/`](python) — Übersicht widget |
 | --- | --- | --- |
-| Surface | menu bar ring + dropdown | card on the desktop |
-| Notifications | yes, on threshold and on pace | no |
+| Menu bar | ring + percentage, click for the card | — |
+| Desktop card | yes, draggable | yes, draggable |
+| Notifications | on threshold and on pace | — |
 | Refresh | in-app timer | launchd agent |
 | Needs | nothing but macOS 14+ | Python 3.10+, Übersicht |
 | Build | `swift build` (Command Line Tools) | `pipx install` |
 
-They read and write the same `~/.local/share/ai-usage/usage.json`, so running
-both is fine — either one refreshing keeps the other current.
+The native app is a superset and needs no third-party app to host it. The
+Übersicht widget is kept for anyone already running Übersicht. They read and
+write the same `~/.local/share/ai-usage/usage.json`, so running both is fine —
+either one refreshing keeps the other current.
 
 ## The native app
 
@@ -42,20 +45,24 @@ cd macos
 ```
 
 That compiles, wraps the binary in `AI Usage.app`, ad-hoc signs it, copies it to
-`/Applications` and launches it. A ring appears in the menu bar, tinted by the
-window in the most trouble and labelled with its percentage. Click it for the
-full card, a **Refresh** button and settings.
+`/Applications` and launches it.
 
-Settings live behind the gear:
+**Menu bar.** A ring tinted by the window in the most trouble, labelled with its
+percentage. Click it for the full card, a **Refresh** button and settings.
 
-- show the percentage next to the ring, or just the ring
-- open at login
-- notify past *n*% of a window (default 90%)
-- notify when burning faster than *n*× the even pace (default 1.5×)
-- refresh interval
+**Desktop card.** The same card, free-standing. Drag it anywhere; the position
+is remembered per top-left corner, so it stays put when a row appears. It sits
+just above the desktop icons and behind every window by default, the way the
+Übersicht card did — tick *Keep card above other windows* to float it instead.
+Right-click for refresh, hide and quit.
 
-Each alert fires at most once per window; the moment a window resets, the slate
-is wiped and the next crossing is announced again.
+**Notifications.** One alert when a window passes your threshold, one when it is
+burning faster than your pace multiple. Each fires at most once per window; the
+moment a window resets, the slate is wiped and the next crossing is announced
+again.
+
+Settings live behind the gear: menu bar percentage on/off, desktop card on/off
+and its level, open at login, both alert thresholds, and the refresh interval.
 
 **Requirements:** macOS 14+, Command Line Tools (`xcode-select --install`).
 Full Xcode is *not* needed — there is no `.xcodeproj`, `build.sh` assembles the
@@ -65,12 +72,13 @@ bundle by hand.
 for notifications and the login item but means the signature changes on every
 rebuild. macOS may re-ask for Keychain consent after a rebuild; that is expected.
 
-### No WidgetKit widget
+### Why not a WidgetKit widget
 
-A real Notification Centre / desktop widget needs a WidgetKit app extension,
-which needs full Xcode to build and an Apple Developer team for the App Group
-the extension would read through. Until then the Übersicht widget below is the
-desktop-card option, and it works alongside the native app.
+Because it would be strictly worse here. A widget extension runs sandboxed, so
+it could read neither the Keychain nor `~/.codex/auth.json` and would need an
+App Group — which needs a paid developer team — merely to see the cache the app
+already writes. It would also need full Xcode to build, and it could only sit in
+the widget grid. The panel above drags anywhere and needs none of that.
 
 ## The Übersicht widget
 
@@ -120,7 +128,7 @@ Everything hangs off one cache file, `~/.local/share/ai-usage/usage.json`
 
 | Piece | Lives at | Job |
 | --- | --- | --- |
-| `AI Usage.app` | `/Applications` | fetches on its own timer, draws the menu bar, posts notifications, writes the cache |
+| `AI Usage.app` | `/Applications` | fetches on its own timer, draws the menu bar and the desktop card, posts notifications, writes the cache |
 | `ai-usage fetch` | pipx venv, shim in `~/.local/bin` | same fetch, from the shell |
 | `io.github.ai-usage.plist` | `~/Library/LaunchAgents/` | runs `ai-usage fetch --quiet` every 15 min (`StartInterval 900`, `RunAtLoad`) |
 | `ai-usage.jsx` | `~/Library/Application Support/Übersicht/widgets/` | `cat`s the cache every 2 min and draws it |
@@ -191,6 +199,12 @@ you. Übersicht never sees a token.
 macOS hides status items when the bar runs out of room, and menu bar managers
 (Bartender, Ice, Hidden Bar) park them off-screen by default. Check the app is
 alive with `pgrep -fl "AI Usage"`, then look in your manager's hidden section.
+
+**Desktop card missing**
+
+By default it sits behind every window, so a maximised window hides it. Show the
+desktop, or tick *Keep card above other windows*. If it was dragged to a screen
+that is no longer attached, it comes back to the top right on the next launch.
 
 **Widget blank or stale**
 

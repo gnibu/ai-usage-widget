@@ -7,6 +7,10 @@ import SwiftUI
 /// the Übersicht widget read, so all three surfaces stay in agreement.
 @MainActor
 final class UsageStore: ObservableObject {
+    /// One reading for the whole app: the menu bar scene and the AppKit-owned
+    /// desktop card both need it, and only one of them can own it.
+    static let shared = UsageStore()
+
     @Published private(set) var report: Report?
     @Published private(set) var isRefreshing = false
     @Published private(set) var statusImage: NSImage = StatusIcon.image(percent: nil, color: .secondary)
@@ -23,7 +27,7 @@ final class UsageStore: ObservableObject {
     private var timer: Timer?
     private var preferenceWatch: AnyCancellable?
 
-    init() {
+    private init() {
         loadCache()
         redrawIcon()
 

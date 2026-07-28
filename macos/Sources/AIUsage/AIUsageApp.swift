@@ -3,7 +3,7 @@ import SwiftUI
 @main
 struct AIUsageApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
-    @StateObject private var store = UsageStore()
+    @StateObject private var store = UsageStore.shared
 
     var body: some Scene {
         MenuBarExtra {
@@ -21,5 +21,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // but setting it here keeps an unbundled debug run honest.
         NSApp.setActivationPolicy(.accessory)
         Notifier.requestAuthorization()
+        MainActor.assumeIsolated {
+            DesktopCard.shared.start()
+        }
     }
 }
