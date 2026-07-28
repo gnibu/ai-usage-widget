@@ -5,7 +5,7 @@ import SwiftUI
 /// The always-visible card, as a borderless panel rather than a WidgetKit
 /// widget: a widget extension runs sandboxed and so could reach neither the
 /// Keychain nor ~/.codex/auth.json, and it would be pinned to the widget grid.
-/// A panel drags anywhere, like the Übersicht card it replaces.
+/// A panel drags anywhere and needs neither.
 @MainActor
 final class DesktopCard {
     static let shared = DesktopCard()
@@ -13,6 +13,7 @@ final class DesktopCard {
     private var panel: NSPanel?
     private var watches: Set<AnyCancellable> = []
     private var observers: [NSObjectProtocol] = []
+    private var isRepositioning = false
 
     private let width: CGFloat = 300
     private let inset: CGFloat = 30
@@ -84,8 +85,13 @@ final class DesktopCard {
                 forName: NSWindow.didMoveNotification, object: panel, queue: .main
             ) { note in
                 guard let moved = note.object as? NSWindow else { return }
-                let top = NSPoint(x: moved.frame.minX, y: moved.frame.maxY)
-                MainActor.assumeIsolated { Preferences.shared.desktopCardAnchor = top }
+                MainActor.assumeIsolated {
+                    // Every move we make ourselves also lands here. Only a drag
+                    // should redefine where the user wants the card.
+                    guard !self.isRepositioning else { return }
+                    Preferences.shared.desktopCardAnchor =
+                        NSPoint(x: moved.frame.minX, y: moved.frame.maxY)
+                }
             },
             NotificationCenter.default.addObserver(
                 forName: NSWindow.didResizeNotification, object: panel, queue: .main
@@ -94,7 +100,7 @@ final class DesktopCard {
                 MainActor.assumeIsolated {
                     guard let top = Preferences.shared.desktopCardAnchor else { return }
                     // Keep the top edge put; only the bottom should move.
-                    resized.setFrameOrigin(NSPoint(x: top.x, y: top.y - resized.frame.height))
+                    self.reposition(resized, topLeft: top)
                 }
             },
         ]
@@ -108,12 +114,20 @@ final class DesktopCard {
     }
 
     private func anchor(_ panel: NSPanel, to top: NSPoint) {
-        panel.setFrameOrigin(NSPoint(x: top.x, y: top.y - panel.frame.height))
+        reposition(panel, topLeft: top)
         Preferences.shared.desktopCardAnchor = top
     }
 
-    /// Desktop level sits above the wallpaper but below every window, which is
-    /// where Übersicht put the card. Floating keeps it in front of everything.
+    /// Place the card by its top left corner, without the move being mistaken
+    /// for a drag and written back over the remembered position.
+    private func reposition(_ window: NSWindow, topLeft: NSPoint) {
+        isRepositioning = true
+        window.setFrameOrigin(NSPoint(x: topLeft.x, y: topLeft.y - window.frame.height))
+        isRepositioning = false
+    }
+
+    /// Desktop level sits above the wallpaper and the icons but below every
+    /// window. Floating keeps the card in front of everything instead.
     private static func level(floating: Bool) -> NSWindow.Level {
         if floating { return .floating }
         return NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.desktopIconWindow)) + 1)

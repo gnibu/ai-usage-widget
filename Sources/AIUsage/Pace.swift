@@ -1,8 +1,8 @@
 import SwiftUI
 
 /// Pace maths and formatting, shared by the panel, the menu bar icon and the
-/// notification rules. Ported from the Übersicht widget so both surfaces judge
-/// a window identically.
+/// notification rules. One implementation so that every surface judges a
+/// window identically.
 enum Pace {
     static let good = Color(red: 0.369, green: 0.788, blue: 0.541)   // #5ec98a
     static let warn = Color(red: 1.000, green: 0.706, blue: 0.329)   // #ffb454

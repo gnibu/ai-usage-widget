@@ -12,13 +12,13 @@ final class Preferences: ObservableObject {
         didSet { defaults.set(showPercentInMenuBar, forKey: Keys.showPercent) }
     }
 
-    /// The free-standing card on the desktop, the Übersicht widget's successor.
+    /// The free-standing card on the desktop.
     @Published var showDesktopCard: Bool {
         didSet { defaults.set(showDesktopCard, forKey: Keys.showDesktopCard) }
     }
 
-    /// False parks the card on the desktop, behind every window, the way
-    /// Übersicht did. True keeps it in front of everything.
+    /// False parks the card on the desktop, behind every window. True keeps it
+    /// in front of everything.
     @Published var desktopCardFloats: Bool {
         didSet { defaults.set(desktopCardFloats, forKey: Keys.desktopCardFloats) }
     }

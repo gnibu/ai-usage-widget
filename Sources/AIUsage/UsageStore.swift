@@ -3,8 +3,8 @@ import Combine
 import SwiftUI
 
 /// Owns the current reading: loads the cache at launch, refreshes on a timer,
-/// on wake, and on demand, and writes the same `usage.json` the Python CLI and
-/// the Übersicht widget read, so all three surfaces stay in agreement.
+/// on wake, and on demand, and writes `usage.json` so a reading survives a
+/// restart and the app has something to draw before the first fetch lands.
 @MainActor
 final class UsageStore: ObservableObject {
     /// One reading for the whole app: the menu bar scene and the AppKit-owned

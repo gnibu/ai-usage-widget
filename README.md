@@ -1,8 +1,8 @@
 # ai-usage-widget
 
-How much of your **Claude Code** and **Codex** quota you have burned, and
-whether you are burning it faster than the window refills. Refreshes every 15
-minutes.
+A macOS menu bar app showing how much of your **Claude Code** and **Codex**
+quota you have burned, and whether you are burning it faster than the window
+refills. Refreshes every 15 minutes, and tells you when you are running hot.
 
 ```
 AI USAGE                          05:07
@@ -21,40 +21,33 @@ spark week  ▓───┃──────    1%  Mon 08:36
   orange up to 1.5× it, red beyond that or above 90% consumed.
 - **Right column** — when the window resets, as a wall-clock time.
 
-Two front ends draw exactly that, from the same cache file:
-
-| | [`macos/`](macos) — native app | [`python/`](python) — Übersicht widget |
-| --- | --- | --- |
-| Menu bar | ring + percentage, click for the card | — |
-| Desktop card | yes, draggable | yes, draggable |
-| Notifications | on threshold and on pace | — |
-| Refresh | in-app timer | launchd agent |
-| Needs | nothing but macOS 14+ | Python 3.10+, Übersicht |
-| Build | `swift build` (Command Line Tools) | `pipx install` |
-
-The native app is a superset and needs no third-party app to host it. The
-Übersicht widget is kept for anyone already running Übersicht. They read and
-write the same `~/.local/share/ai-usage/usage.json`, so running both is fine —
-either one refreshing keeps the other current.
-
-## The native app
+## Install
 
 ```sh
-cd macos
+git clone https://github.com/gnibu/ai-usage-widget.git
+cd ai-usage-widget
 ./build.sh --install
 ```
 
 That compiles, wraps the binary in `AI Usage.app`, ad-hoc signs it, copies it to
-`/Applications` and launches it.
+`/Applications` and launches it. Drop `--install` to build into `.build/` and
+leave `/Applications` alone.
+
+**Requirements:** macOS 14+, Command Line Tools (`xcode-select --install`), and
+Claude Code and/or Codex already logged in. Either provider can be missing — you
+get a per-provider error rather than a failure. Full Xcode is *not* needed;
+there is no `.xcodeproj`, `build.sh` assembles the bundle by hand.
+
+## What you get
 
 **Menu bar.** A ring tinted by the window in the most trouble, labelled with its
 percentage. Click it for the full card, a **Refresh** button and settings.
 
 **Desktop card.** The same card, free-standing. Drag it anywhere; the position
-is remembered per top-left corner, so it stays put when a row appears. It sits
-just above the desktop icons and behind every window by default, the way the
-Übersicht card did — tick *Keep card above other windows* to float it instead.
-Right-click for refresh, hide and quit.
+is remembered by its top left corner, so it stays put when a row appears. It
+sits just above the desktop icons and behind every window by default — tick
+*Keep card above other windows* to float it instead. Right-click it for refresh,
+hide and quit.
 
 **Notifications.** One alert when a window passes your threshold, one when it is
 burning faster than your pace multiple. Each fires at most once per window; the
@@ -64,78 +57,30 @@ again.
 Settings live behind the gear: menu bar percentage on/off, desktop card on/off
 and its level, open at login, both alert thresholds, and the refresh interval.
 
-**Requirements:** macOS 14+, Command Line Tools (`xcode-select --install`).
-Full Xcode is *not* needed — there is no `.xcodeproj`, `build.sh` assembles the
-bundle by hand.
-
-**Ad-hoc signing.** The app is signed with an ad-hoc identity, which is enough
-for notifications and the login item but means the signature changes on every
-rebuild. macOS may re-ask for Keychain consent after a rebuild; that is expected.
-
 ### Why not a WidgetKit widget
 
 Because it would be strictly worse here. A widget extension runs sandboxed, so
-it could read neither the Keychain nor `~/.codex/auth.json` and would need an
-App Group — which needs a paid developer team — merely to see the cache the app
-already writes. It would also need full Xcode to build, and it could only sit in
-the widget grid. The panel above drags anywhere and needs none of that.
-
-## The Übersicht widget
-
-```sh
-pipx install "git+https://github.com/gnibu/ai-usage-widget.git#subdirectory=python"
-ai-usage install
-```
-
-`ai-usage install` deploys the widget, registers the refresh launch agent, offers
-to `brew install --cask ubersicht` if needed, and does a first fetch. Übersicht's
-first launch shows a Gatekeeper prompt ("app downloaded from the Internet") —
-click **Open**. Drag the card anywhere; the position is remembered.
-
-From a checkout:
-
-```sh
-git clone https://github.com/gnibu/ai-usage-widget.git
-cd ai-usage-widget/python
-pipx install .
-ai-usage install
-```
-
-If you have switched to the native app and want the desktop card gone, run
-`ai-usage uninstall` — the app keeps the cache current on its own.
-
-### Commands
-
-| Command | Does |
-| --- | --- |
-| `ai-usage` / `ai-usage fetch` | refresh from both providers, print a summary |
-| `ai-usage fetch --json` | same, raw report on stdout |
-| `ai-usage status` | show the cached reading and agent state, no network |
-| `ai-usage install` | deploy widget + refresh launch agent |
-| `ai-usage uninstall [--purge]` | remove them (`--purge` also drops cached data) |
-| `ai-usage paths` | print every path the tool touches |
-
-Force a refresh out of band:
-
-```sh
-launchctl kickstart gui/$(id -u)/io.github.ai-usage
-```
+it could read neither the Keychain nor `~/.codex/auth.json`, and it would need
+an App Group — which needs a paid developer team — merely to see the cache the
+app already writes. It would also need full Xcode to build, and it could only
+sit in the widget grid. The desktop card drags anywhere and needs none of that.
 
 ## How it works
 
-Everything hangs off one cache file, `~/.local/share/ai-usage/usage.json`
-(override the directory with `AI_USAGE_DIR`):
+The app fetches on its own timer, on wake, and on demand, then writes
+`~/.local/share/ai-usage/usage.json` (override the directory with
+`AI_USAGE_DIR`). Everything on screen is drawn from that one file, so the menu
+bar ring, the dropdown and the desktop card can never disagree.
 
-| Piece | Lives at | Job |
-| --- | --- | --- |
-| `AI Usage.app` | `/Applications` | fetches on its own timer, draws the menu bar and the desktop card, posts notifications, writes the cache |
-| `ai-usage fetch` | pipx venv, shim in `~/.local/bin` | same fetch, from the shell |
-| `io.github.ai-usage.plist` | `~/Library/LaunchAgents/` | runs `ai-usage fetch --quiet` every 15 min (`StartInterval 900`, `RunAtLoad`) |
-| `ai-usage.jsx` | `~/Library/Application Support/Übersicht/widgets/` | `cat`s the cache every 2 min and draws it |
-
-The widget re-reads the cache more often than anything refetches, so the pace
-tick, colours and reset times stay accurate between fetches. `Fetcher.swift` is
-a direct port of `usage.py` and emits byte-identical JSON — keep them in step.
+| Source file | Job |
+| --- | --- |
+| `Fetcher.swift` | reads both credential stores, calls both usage APIs |
+| `Report.swift` | the JSON written to the cache |
+| `Pace.swift` | elapsed share, pace ratio, colours, reset labels |
+| `UsageCard.swift` | the reading, shared by the dropdown and the desktop card |
+| `StatusIcon.swift` | the menu bar ring |
+| `Notifier.swift` | threshold and pace alerts, one per window instance |
+| `UsageStore.swift` | the single reading, its timer, and the cache |
 
 ### Where the numbers come from
 
@@ -153,14 +98,13 @@ Which windows appear depends on what each API returns for your plan:
 - Claude reports `five_hour` and `seven_day`.
 - Codex reports a primary window, an optional secondary one, and any
   model-specific buckets from `additional_rate_limits` (e.g. GPT-5.3-Codex-Spark)
-  as their own row. On Pro today only weekly windows come back — `secondary_window`
-  is `null`. If a 5-hour window reappears both front ends render it with no change.
+  as their own row. On Pro today only weekly windows come back —
+  `secondary_window` is `null`. If a 5-hour window reappears it is rendered with
+  no change.
 
 ## Security
 
 Worth understanding before running something that touches your API credentials.
-
-**What the fetch does**
 
 - Reads the Claude OAuth token via `/usr/bin/security` and the Codex token from
   `~/.codex/auth.json` — the two stores the CLIs already maintain.
@@ -170,27 +114,12 @@ Worth understanding before running something that touches your API credentials.
   and plan names — nothing secret.
 - Read-only on both credential stores. It never writes or refreshes tokens, so
   it cannot invalidate either CLI's login.
-- No dependencies on either side — Python standard library, Swift standard
-  frameworks. There is no supply chain to audit beyond this repo. Read it; it is
-  short.
+- No dependencies beyond the system frameworks. There is no supply chain to
+  audit beyond this repo. Read it; it is short.
 
-**Why the split matters**
-
-Übersicht widgets are arbitrary shell executed on a timer — that is the app's
-whole design. Rather than give a third-party app a path to your Keychain, the
-widget's entire command is `cat ~/.local/share/ai-usage/usage.json`. The
-privileged work happens in the launch agent (or the native app), which runs as
-you. Übersicht never sees a token.
-
-**What you are trusting**
-
-- Übersicht: open source (MIT), signed and notarized as
-  `Developer ID Application: Felix Hageloh (S3P44NRLCW)`. Verify yours:
-  ```sh
-  spctl -a -vv /Applications/Übersicht.app
-  ```
-- Anything that can write to `~/Library/Application Support/Übersicht/widgets/`
-  runs code as you. Treat that directory like `~/.zshrc`.
+**Ad-hoc signing.** The app is signed with an ad-hoc identity, which is enough
+for notifications and the login item but means the signature changes on every
+rebuild. macOS may re-ask for Keychain consent after a rebuild; that is expected.
 
 ## Troubleshooting
 
@@ -206,28 +135,17 @@ By default it sits behind every window, so a maximised window hides it. Show the
 desktop, or tick *Keep card above other windows*. If it was dragged to a screen
 that is no longer attached, it comes back to the top right on the next launch.
 
-**Widget blank or stale**
-
-```sh
-ai-usage status                                       # cached values + agent state
-launchctl kickstart gui/$(id -u)/io.github.ai-usage   # force a fetch
-cat ~/.local/share/ai-usage/error.log                 # agent stderr
-```
-
-Both front ends label a reading `(stale)` once the cache is more than 45 minutes
-old.
-
 **No notifications**
 
 The app asks for permission on first launch. If it was refused, re-enable it
 under System Settings → Notifications → AI Usage. Notifications need the app to
-be signed, which `build.sh` handles — running the raw `swift build` binary
-skips them on purpose.
+be signed, which `build.sh` handles — running the raw `swift build` binary skips
+them on purpose.
 
 **`token expired — run claude` / `run codex`**
 
 The OAuth token lapsed. Start the relevant CLI once; it refreshes the token in
-place and the next fetch recovers. By design this tool never refreshes tokens
+place and the next fetch recovers. By design this app never refreshes tokens
 itself — it will not touch your logins.
 
 **`http 403` from Codex**
@@ -235,15 +153,18 @@ itself — it will not touch your logins.
 The edge in front of `chatgpt.com` intermittently rejects a valid request. The
 fetch already retries once; a later run generally succeeds.
 
+**Reading is stale**
+
+The header marks a reading `(stale)` once the cache is more than 45 minutes old.
+Hit **Refresh**; if that fails the per-provider error says why.
+
 ## Uninstall
 
 ```sh
 osascript -e 'quit app "AI Usage"'
 rm -rf "/Applications/AI Usage.app"
-
-ai-usage uninstall --purge
-pipx uninstall ai-usage-widget
-brew uninstall --cask ubersicht   # optional
+rm -rf ~/.local/share/ai-usage
+defaults delete io.github.ai-usage
 ```
 
 ## License

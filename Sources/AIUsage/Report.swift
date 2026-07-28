@@ -1,7 +1,7 @@
 import Foundation
 
-/// The report shape is shared with the Python CLI and the Übersicht widget, so
-/// the JSON keys below are a contract: keep them in sync with `usage.py`.
+/// What gets written to the cache. The snake_case keys are deliberate: the
+/// file is meant to stay readable by anything that wants to `cat | jq` it.
 
 struct UsageWindow: Codable, Identifiable, Equatable {
     var label: String

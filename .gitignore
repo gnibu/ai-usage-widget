@@ -1,13 +1,6 @@
-usage.json
-error.log
 .DS_Store
-.mypy_cache/
-__pycache__/
-*.egg-info/
-dist/
-build/
 
-# Swift / SwiftPM
+# SwiftPM
 .build/
 .swiftpm/
 *.app/

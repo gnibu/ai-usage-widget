@@ -5,7 +5,7 @@ import Foundation
 ///   - Codex:       ~/.codex/auth.json
 ///
 /// Nothing is written back to those stores and no token is ever logged. This is
-/// a direct port of `usage.py`; keep the two in step.
+/// the same requests the two CLIs make for themselves.
 enum Fetcher {
     static let keychainService = "Claude Code-credentials"
     static let claudeUsageURL = URL(string: "https://api.anthropic.com/api/oauth/usage")!
@@ -165,9 +165,9 @@ enum Fetcher {
         try? JSONSerialization.jsonObject(with: data) as? [String: Any]
     }
 
-    /// Shelled out rather than done through SecItemCopyMatching: `security` is
-    /// what the Python version uses, and it keeps the app out of the
-    /// keychain-entitlement business. macOS asks for consent the first time.
+    /// Shelled out rather than done through SecItemCopyMatching, which keeps
+    /// the app out of the keychain-entitlement business and reuses the consent
+    /// the item's ACL already grants `security`. macOS asks the first time.
     private static func keychainSecret(service: String) -> Data? {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/usr/bin/security")
