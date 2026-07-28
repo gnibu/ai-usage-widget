@@ -34,6 +34,30 @@ enum Glass {
         )
     }
 
+    /// The colour a blurred backdrop loses on the way through.
+    ///
+    /// The design ends its blur with `saturate(180%)`, which is what makes the
+    /// pane read as blue glass rather than as slate. SwiftUI has no equivalent:
+    /// materials are composited by the window server, below the level a
+    /// `.saturation` modifier reaches, so the filter is a no-op on them. The
+    /// wallpaper behind the panel measures 0.56 saturation and the pane came
+    /// out at 0.21 against the design's 0.55.
+    ///
+    /// So the colour goes back on top of the blur instead of being recovered
+    /// from it. The trade is that the pane no longer tracks a backdrop of a
+    /// different hue — it is glass with a colour of its own, rather than glass
+    /// that takes the colour of what is behind it.
+    static func tone(_ strength: Double) -> LinearGradient {
+        LinearGradient(
+            colors: [
+                Color(red: 0.271, green: 0.463, blue: 0.565).opacity(0.58 * strength),
+                Color(red: 0.086, green: 0.188, blue: 0.263).opacity(0.92 * strength),
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
+
     /// The divider used inside a pane: visible in the middle, gone at the ends.
     static var hairline: some View {
         LinearGradient(
@@ -53,22 +77,41 @@ extension View {
     /// `saturation` is the design's `backdrop-filter: saturate(180%)`: the blur
     /// alone greys out whatever is behind the pane, and putting the colour back
     /// is most of what makes it read as glass rather than as fog.
+    /// `lift` scales the sheen. The design's pane has no dark layer under it at
+    /// all — blur, saturate, then a white gradient — so the gradient lands on a
+    /// lit backdrop and the pane comes out light. SwiftUI's material in the
+    /// dark appearance is itself a dark translucency, so the same gradient
+    /// lands on slate and the pane goes flat. Rendering the blur light instead
+    /// overshoots badly: the pane turns milky and white text stops reading.
+    /// Lifting the gradient closes the gap from the other side.
+    /// `lift` scales the head of the sheen and `falloff` its tail, because the
+    /// two ends wanted different answers: measured against the design, the pane
+    /// was right at the top left with the sheen at full strength and right at
+    /// the bottom right with it at a third of that. Scaling both together could
+    /// only ever satisfy one end.
     func glassPane(
         radius: CGFloat,
         tint: Color? = nil,
-        saturation: Double = 1,
+        lift: Double = 1,
+        falloff: Double = 0.06,
+        tone: Double = 0,
         shadow: Bool = true
     ) -> some View {
-        let sheen = Glass.sheen(tint: tint ?? .white, top: tint == nil ? 0.18 : 0.20)
+        let sheen = Glass.sheen(
+            tint: tint ?? .white,
+            top: (tint == nil ? 0.18 : 0.20) * lift,
+            bottom: falloff
+        )
         let border = Glass.rim(top: tint == nil ? 0.4 : 0.34, bottom: 0.08, tint: tint ?? .white)
+        let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
 
         return background {
-            RoundedRectangle(cornerRadius: radius, style: .continuous)
+            shape
                 .fill(.ultraThinMaterial)
-                .saturation(saturation)
-                .overlay(
-                    RoundedRectangle(cornerRadius: radius, style: .continuous).fill(sheen)
-                )
+                // Colour first, then the sheen over it — the white gradient is
+                // meant to lift the glass, not to be tinted by it.
+                .overlay(tone > 0 ? shape.fill(Glass.tone(tone)) : nil)
+                .overlay(shape.fill(sheen))
         }
         .overlay(
             RoundedRectangle(cornerRadius: radius, style: .continuous)

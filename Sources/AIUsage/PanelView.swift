@@ -33,7 +33,7 @@ struct PanelView: View {
         // The same pane as the desktop card, which is what the design draws —
         // the dropdown had been getting a bare rectangle, so it was missing the
         // border and the lit top edge that make glass read as thick.
-        .glassPane(radius: Glass.panelRadius, saturation: 1.8, shadow: false)
+        .glassPane(radius: Glass.panelRadius, falloff: 0.033, tone: 1, shadow: false)
         .background(MenuWindowBackdrop())
         .environment(\.colorScheme, .dark)
         .onAppear { store.refreshIfStale(olderThan: 300) }

@@ -1,9 +1,9 @@
 import AppKit
 
-/// The provider marks drawn in the menu bar, read as SVG outlines from
-/// `Resources/Icons` rather than as image assets: the files stay legible and
-/// replaceable, and one outline scales to any menu bar height where a bitmap
-/// would need a set.
+/// The provider marks drawn in the menu bar, on the card and in the dropdown,
+/// read as SVG outlines from `Resources/Icons` rather than as image assets: the
+/// files stay legible and replaceable, and one outline scales to any size where
+/// a bitmap would need a set.
 ///
 /// Outlines taken from simple-icons, whose packaging is CC0; the marks
 /// themselves remain trademarks of their owners. So they are only ever drawn
@@ -12,10 +12,13 @@ import AppKit
 enum BrandGlyph {
     /// Nil for a provider with no mark on file; the caller falls back to a
     /// monogram, which is also what an unreadable or unparseable outline gets.
-    static func path(for provider: String, fitting box: NSSize) -> NSBezierPath? {
+    ///
+    /// `flipped` suits AppKit, whose y runs upwards. SwiftUI's runs downwards,
+    /// the same way the outlines are authored, so it asks for the mark as is.
+    static func path(for provider: String, fitting box: NSSize, flipped: Bool = true) -> NSBezierPath? {
         guard let file = files[provider.lowercased()] else { return nil }
         guard let parsed = cache.path(for: file) else { return nil }
-        return fit(parsed, in: box)
+        return fit(parsed, in: box, flipped: flipped)
     }
 
     /// Where the outlines live. `build.sh` copies the directory into the
@@ -62,17 +65,20 @@ enum BrandGlyph {
     }
 
     /// Both outlines are authored in a 24×24 box with y running downwards, so
-    /// fitting one means flipping it and centring it on the shorter side.
-    private static func fit(_ path: NSBezierPath, in box: NSSize) -> NSBezierPath {
+    /// fitting one means centring it on the shorter side, and flipping it for
+    /// a caller whose y runs the other way.
+    private static func fit(_ path: NSBezierPath, in box: NSSize, flipped: Bool) -> NSBezierPath {
         let side = min(box.width, box.height)
         let scale = side / 24
 
-        let transform = AffineTransform(translationByX: (box.width - side) / 2, byY: (box.height + side) / 2)
-        var flip = transform
-        flip.scale(x: scale, y: -scale)
+        var transform = AffineTransform(
+            translationByX: (box.width - side) / 2,
+            byY: (box.height + (flipped ? side : -side)) / 2
+        )
+        transform.scale(x: scale, y: flipped ? -scale : scale)
 
         let copy = path.copy() as! NSBezierPath
-        copy.transform(using: flip)
+        copy.transform(using: transform)
         return copy
     }
 }

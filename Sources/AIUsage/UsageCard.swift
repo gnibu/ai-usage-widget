@@ -14,16 +14,21 @@ struct RowMetrics {
     let labelSize: CGFloat
     let percentSize: CGFloat
     let resetSize: CGFloat
+    /// The provider mark beside the name, sized to the cap height of the name
+    /// rather than to its point size, so it reads as a sibling of the word.
+    let markSize: CGFloat
     let glows: Bool
 
     static let card = RowMetrics(
         label: 84, percent: 46, reset: 88, trackHeight: 10, gap: 12,
-        labelSize: 14, percentSize: 14, resetSize: 12, glows: true
+        labelSize: 14, percentSize: 14, resetSize: 12, markSize: 16, glows: true
     )
 
+    // The label column is wide enough for "spark week", which is the longest
+    // one any provider reports — at 66pt it came out as "spark w…".
     static let menu = RowMetrics(
-        label: 66, percent: 38, reset: 70, trackHeight: 8, gap: 10,
-        labelSize: 12, percentSize: 12, resetSize: 11, glows: false
+        label: 78, percent: 38, reset: 70, trackHeight: 8, gap: 10,
+        labelSize: 12, percentSize: 12, resetSize: 11, markSize: 14, glows: false
     )
 }
 
@@ -170,6 +175,11 @@ struct ProviderBlock: View {
 
         VStack(alignment: .leading, spacing: metrics.trackHeight == 10 ? 10 : 9) {
             HStack(alignment: .firstTextBaseline, spacing: 9) {
+                BrandMark(provider: provider.name, size: metrics.markSize)
+                    // Marks are centred on their own box, names sit on a
+                    // baseline; aligning the two by eye keeps the row level.
+                    .alignmentGuide(.firstTextBaseline) { $0[.bottom] - metrics.markSize * 0.14 }
+
                 Text(provider.name)
                     .font(.system(size: metrics.labelSize + 3, weight: .semibold))
                     .foregroundStyle(.white)
@@ -221,6 +231,35 @@ struct ProviderBlock: View {
         } else {
             text.foregroundStyle(Glass.ink(0.5))
         }
+    }
+}
+
+/// The provider mark beside its name, drawn from the same outline the menu bar
+/// uses. Monochrome and uniformly scaled, per the trademark note on
+/// `BrandGlyph` — pace colour stays on the track and the ring.
+struct BrandMark: View {
+    let provider: String
+    let size: CGFloat
+    var opacity: Double = 0.9
+
+    var body: some View {
+        Group {
+            if let outline = BrandGlyph.path(
+                for: provider,
+                fitting: NSSize(width: size, height: size),
+                flipped: false
+            ) {
+                // Even-odd, as the outline was parsed: the marks carry counters
+                // a nonzero fill would flood.
+                Path(outline.cgPath).fill(style: FillStyle(eoFill: true))
+            } else {
+                // The monogram the menu bar falls back to, at this size.
+                Text(String(provider.prefix(1)).uppercased())
+                    .font(.system(size: size * 0.78, weight: .semibold))
+            }
+        }
+        .foregroundStyle(Glass.ink(opacity))
+        .frame(width: size, height: size)
     }
 }
 
