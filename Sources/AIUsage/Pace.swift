@@ -8,6 +8,18 @@ enum Pace {
     static let warn = Color(red: 1.000, green: 0.706, blue: 0.329)   // #ffb454
     static let bad = Color(red: 1.000, green: 0.420, blue: 0.420)    // #ff6b6b
 
+    struct Severity: Comparable {
+        let tier: Int
+        let percent: Double
+        let pace: Double
+
+        static func < (lhs: Severity, rhs: Severity) -> Bool {
+            if lhs.tier != rhs.tier { return lhs.tier < rhs.tier }
+            if lhs.percent != rhs.percent { return lhs.percent < rhs.percent }
+            return lhs.pace < rhs.pace
+        }
+    }
+
     /// Share of the window already elapsed, 0-100. Nil when the window length
     /// or reset time is unknown, in which case absolute thresholds are used.
     static func elapsedPercent(_ window: UsageWindow, now: Date = Date()) -> Double? {
@@ -29,23 +41,35 @@ enum Pace {
     /// Green while spending is at or under the even-burn pace, orange when
     /// running ahead of it, red when far ahead or nearly exhausted.
     static func color(_ window: UsageWindow, now: Date = Date()) -> Color {
-        if window.percent >= 90 { return bad }
+        switch severityTier(window, now: now) {
+        case 2: return bad
+        case 1: return warn
+        default: return good
+        }
+    }
+
+    private static func severityTier(_ window: UsageWindow, now: Date) -> Int {
+        if window.percent >= 90 { return 2 }
         guard let ratio = ratio(window, now: now) else {
             // Too early in the window for a pace ratio to mean anything.
-            if window.percent >= 60 { return bad }
-            if window.percent >= 30 { return warn }
-            return good
+            if window.percent >= 60 { return 2 }
+            if window.percent >= 30 { return 1 }
+            return 0
         }
-        if ratio > 1.5 { return bad }
-        if ratio > 1.0 { return warn }
-        return good
+        if ratio > 1.5 { return 2 }
+        if ratio > 1.0 { return 1 }
+        return 0
     }
 
     /// Ranking used to pick which window the menu bar should speak for: the one
-    /// in the most trouble, judged the same way the colour is.
-    static func severity(_ window: UsageWindow, now: Date = Date()) -> Double {
-        let paceScore = (ratio(window, now: now) ?? 1.0) * 20
-        return max(window.percent, min(window.percent + paceScore, 99))
+    /// in the most trouble. Colour tier wins first, then usage and pace break
+    /// ties without collapsing high percentages into the same capped score.
+    static func severity(_ window: UsageWindow, now: Date = Date()) -> Severity {
+        Severity(
+            tier: severityTier(window, now: now),
+            percent: window.percent,
+            pace: ratio(window, now: now) ?? 0
+        )
     }
 
     /// Absolute reset time. Bare clock today, weekday within the week, and a

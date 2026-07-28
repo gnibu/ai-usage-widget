@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 /// Reads OAuth credentials already stored on the machine by the two CLIs:
@@ -169,19 +170,47 @@ enum Fetcher {
     /// the app out of the keychain-entitlement business and reuses the consent
     /// the item's ACL already grants `security`. macOS asks the first time.
     private static func keychainSecret(service: String) -> Data? {
+        runProcess(
+            executableURL: URL(fileURLWithPath: "/usr/bin/security"),
+            arguments: ["find-generic-password", "-s", service, "-w"],
+            timeout: 15
+        )
+    }
+
+    /// Run a small helper process without allowing an unanswered system prompt
+    /// to hold the provider refresh open forever.
+    static func runProcess(
+        executableURL: URL,
+        arguments: [String],
+        timeout: TimeInterval
+    ) -> Data? {
         let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/usr/bin/security")
-        task.arguments = ["find-generic-password", "-s", service, "-w"]
+        task.executableURL = executableURL
+        task.arguments = arguments
         let pipe = Pipe()
         task.standardOutput = pipe
         task.standardError = FileHandle.nullDevice
+        let finished = DispatchSemaphore(value: 0)
+        task.terminationHandler = { _ in finished.signal() }
+
         do {
             try task.run()
         } catch {
             return nil
         }
+
+        if finished.wait(timeout: .now() + timeout) == .timedOut {
+            if task.isRunning {
+                task.terminate()
+            }
+            if finished.wait(timeout: .now() + 1) == .timedOut, task.isRunning {
+                Darwin.kill(task.processIdentifier, SIGKILL)
+                _ = finished.wait(timeout: .now() + 1)
+            }
+            return nil
+        }
+
         let out = pipe.fileHandleForReading.readDataToEndOfFile()
-        task.waitUntilExit()
         return task.terminationStatus == 0 ? out : nil
     }
 

@@ -11,6 +11,8 @@ cd "$(dirname "$0")"
 APP_NAME="AI Usage"
 BUNDLE=".build/${APP_NAME}.app"
 INSTALL_DIR="/Applications"
+LEGACY_AGENT_DIR="${HOME}/Library/LaunchAgents"
+LEGACY_WIDGET="${HOME}/Library/Application Support/Übersicht/widgets/ai-usage.jsx"
 
 # Built for the host architecture. A universal binary needs `--arch arm64
 # --arch x86_64`, which routes through xcbuild and so requires full Xcode.
@@ -33,6 +35,17 @@ codesign --force --sign - --timestamp=none "$BUNDLE"
 if [ "${1:-}" = "--install" ]; then
     echo "==> installing to ${INSTALL_DIR}"
     osascript -e 'quit app "AI Usage"' 2>/dev/null || true
+
+    # Retire both published launch-agent labels and the old Übersicht widget.
+    # The Übersicht app and pipx package are left alone because they may still
+    # be useful to the user for unrelated projects.
+    echo "==> removing legacy widget"
+    for label in io.github.ai-usage net.niak.ai-usage; do
+        launchctl bootout "gui/$(id -u)/${label}" 2>/dev/null || true
+        rm -f "${LEGACY_AGENT_DIR}/${label}.plist"
+    done
+    rm -f "$LEGACY_WIDGET"
+
     rm -rf "${INSTALL_DIR}/${APP_NAME}.app"
     cp -R "$BUNDLE" "${INSTALL_DIR}/"
     open "${INSTALL_DIR}/${APP_NAME}.app"

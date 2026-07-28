@@ -33,6 +33,10 @@ That compiles, wraps the binary in `AI Usage.app`, ad-hoc signs it, copies it to
 `/Applications` and launches it. Drop `--install` to build into `.build/` and
 leave `/Applications` alone.
 
+When upgrading from the Python/Übersicht version, `--install` unloads and
+removes its launch agent and widget automatically. Übersicht itself and the
+old pipx package are left installed; remove them separately if no longer used.
+
 **Requirements:** macOS 14+, Command Line Tools (`xcode-select --install`), and
 Claude Code and/or Codex already logged in. Either provider can be missing — you
 get a per-provider error rather than a failure. Full Xcode is *not* needed;
