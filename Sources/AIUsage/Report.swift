@@ -87,4 +87,35 @@ struct Report: Codable, Equatable {
     var isStale: Bool {
         Date().timeIntervalSince1970 - Double(updatedAt) > 2700
     }
+
+    /// The windows worth watching, worst first.
+    ///
+    /// `fairShare` gives every provider a slot before any provider gets a
+    /// second one. That keeps a quiet Codex on screen next to a loud Claude,
+    /// at the cost of bumping a window that really is busier — so it is a
+    /// choice, not the rule.
+    func busiestWindows(
+        limit: Int,
+        fairShare: Bool = false,
+        now: Date = Date()
+    ) -> [(provider: Provider, window: UsageWindow)] {
+        guard limit > 0 else { return [] }
+        let ranked = providers
+            .filter(\.ok)
+            .flatMap { provider in provider.windows.map { (provider: provider, window: $0) } }
+            .sorted { Pace.severity($0.window, now: now) > Pace.severity($1.window, now: now) }
+
+        guard fairShare else { return Array(ranked.prefix(limit)) }
+
+        var claimed = Set<String>()
+        let leading = ranked.filter { claimed.insert($0.provider.name).inserted }
+        let taken = Set(leading.map(Self.key))
+        return Array((leading + ranked.filter { !taken.contains(Self.key($0)) }).prefix(limit))
+    }
+
+    /// Provider and window labels are each unique within a reading, but only
+    /// together do they identify one row.
+    private static func key(_ pair: (provider: Provider, window: UsageWindow)) -> String {
+        pair.provider.name + "\u{1}" + pair.window.label
+    }
 }

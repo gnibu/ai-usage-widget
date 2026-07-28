@@ -8,8 +8,35 @@ final class Preferences: ObservableObject {
 
     private let defaults = UserDefaults.standard
 
+    /// The three parts a menu bar segment is built from. At least one stays on
+    /// — the settings pane locks the last one rather than allow an empty item.
+    @Published var showLogoInMenuBar: Bool {
+        didSet { defaults.set(showLogoInMenuBar, forKey: Keys.showLogo) }
+    }
+
+    @Published var showGaugeInMenuBar: Bool {
+        didSet { defaults.set(showGaugeInMenuBar, forKey: Keys.showGauge) }
+    }
+
     @Published var showPercentInMenuBar: Bool {
         didSet { defaults.set(showPercentInMenuBar, forKey: Keys.showPercent) }
+    }
+
+    /// The window's initial, drawn inside the gauge. Pointless without one.
+    @Published var showWindowInMenuBar: Bool {
+        didSet { defaults.set(showWindowInMenuBar, forKey: Keys.showWindow) }
+    }
+
+    /// How many windows the menu bar speaks for at once. One is the window in
+    /// the most trouble; raising it brings the next-worst ones alongside.
+    @Published var menuBarSlots: Int {
+        didSet { defaults.set(menuBarSlots, forKey: Keys.menuBarSlots) }
+    }
+
+    /// Hand every provider a slot before any provider gets a second one, even
+    /// when that means bumping a window that is genuinely busier.
+    @Published var menuBarFairShare: Bool {
+        didSet { defaults.set(menuBarFairShare, forKey: Keys.menuBarFairShare) }
     }
 
     /// The free-standing card on the desktop.
@@ -64,7 +91,12 @@ final class Preferences: ObservableObject {
     }
 
     private enum Keys {
+        static let showLogo = "showLogoInMenuBar"
+        static let showGauge = "showGaugeInMenuBar"
         static let showPercent = "showPercentInMenuBar"
+        static let showWindow = "showWindowInMenuBar"
+        static let menuBarSlots = "menuBarSlots"
+        static let menuBarFairShare = "menuBarFairShare"
         static let showDesktopCard = "showDesktopCard"
         static let desktopCardFloats = "desktopCardFloats"
         static let desktopCardAnchor = "desktopCardAnchor"
@@ -77,7 +109,12 @@ final class Preferences: ObservableObject {
 
     private init() {
         defaults.register(defaults: [
+            Keys.showLogo: true,
+            Keys.showGauge: true,
             Keys.showPercent: true,
+            Keys.showWindow: true,
+            Keys.menuBarSlots: 1,
+            Keys.menuBarFairShare: false,
             Keys.showDesktopCard: true,
             Keys.desktopCardFloats: false,
             Keys.usageThreshold: 90.0,
@@ -86,7 +123,12 @@ final class Preferences: ObservableObject {
             Keys.paceAlerts: true,
             Keys.refreshMinutes: 15.0,
         ])
+        showLogoInMenuBar = defaults.bool(forKey: Keys.showLogo)
+        showGaugeInMenuBar = defaults.bool(forKey: Keys.showGauge)
         showPercentInMenuBar = defaults.bool(forKey: Keys.showPercent)
+        showWindowInMenuBar = defaults.bool(forKey: Keys.showWindow)
+        menuBarSlots = max(1, defaults.integer(forKey: Keys.menuBarSlots))
+        menuBarFairShare = defaults.bool(forKey: Keys.menuBarFairShare)
         showDesktopCard = defaults.bool(forKey: Keys.showDesktopCard)
         desktopCardFloats = defaults.bool(forKey: Keys.desktopCardFloats)
         usageThreshold = defaults.double(forKey: Keys.usageThreshold)

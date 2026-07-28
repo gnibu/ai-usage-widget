@@ -25,6 +25,7 @@ rm -rf "$BUNDLE"
 mkdir -p "$BUNDLE/Contents/MacOS" "$BUNDLE/Contents/Resources"
 cp "$BINARY" "$BUNDLE/Contents/MacOS/AIUsage"
 cp Resources/Info.plist "$BUNDLE/Contents/Info.plist"
+cp -R Resources/Icons "$BUNDLE/Contents/Resources/Icons"
 printf 'APPL????' > "$BUNDLE/Contents/PkgInfo"
 
 # Ad-hoc signature. Without one, macOS refuses to hand the app a notification
