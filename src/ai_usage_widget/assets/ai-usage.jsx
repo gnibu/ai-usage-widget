@@ -188,7 +188,7 @@ const openMenu = (event) => {
       command: REFRESH_CMD,
       keepOpen: true,
     },
-    { label: "Quit Übersicht", command: QUIT_CMD },
+    { label: "Quit", command: QUIT_CMD },
   ];
 
   items.forEach((item) => {
