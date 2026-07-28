@@ -88,6 +88,19 @@ struct Report: Codable, Equatable {
         Date().timeIntervalSince1970 - Double(updatedAt) > 2700
     }
 
+    /// How long ago the reading landed, in the card's second line. The absolute
+    /// clock beside it says *when*; this says whether it is worth trusting.
+    func ageLabel(now: Date = Date()) -> String {
+        let seconds = now.timeIntervalSince1970 - Double(updatedAt)
+        if updatedAt == 0 { return "never" }
+        if seconds < 90 { return "just now" }
+        let minutes = Int((seconds / 60).rounded())
+        if minutes < 60 { return "\(minutes) min ago" }
+        let hours = Int((seconds / 3600).rounded())
+        if hours < 24 { return "\(hours) hr ago" }
+        return "\(Int((seconds / 86400).rounded())) d ago"
+    }
+
     /// The windows worth watching, worst first.
     ///
     /// `fairShare` gives every provider a slot before any provider gets a

@@ -1,172 +1,363 @@
 import AppKit
 import SwiftUI
 
-/// The dropdown behind the menu bar item: the reading, plus the controls a
-/// desktop card had nowhere to put.
+/// The dropdown behind the menu bar item, in two tabs. Settings used to push
+/// the reading off the bottom of the screen when opened; as a tab it costs one
+/// click and keeps the panel a constant height instead.
 struct PanelView: View {
+    enum Tab: Hashable {
+        case usage
+        case settings
+    }
+
     @EnvironmentObject private var store: UsageStore
-    @State private var showingSettings = false
+    @State private var tab: Tab = .usage
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            UsageCard()
+        VStack(spacing: 0) {
+            header
 
-            Divider()
+            switch tab {
+            case .usage:
+                VStack(alignment: .leading, spacing: 16) {
+                    MenuUsageView()
+                    usageFooter
+                }
+                .padding(EdgeInsets(top: 4, leading: 18, bottom: 18, trailing: 18))
 
-            if showingSettings {
-                SettingsView()
-                Divider()
+            case .settings:
+                SettingsTab()
             }
-
-            footer
         }
-        .padding(14)
-        .frame(width: 320)
+        .frame(width: 430)
+        .background {
+            Rectangle()
+                .fill(.ultraThinMaterial)
+                .overlay(Rectangle().fill(Glass.sheen(top: 0.17)))
+        }
+        .environment(\.colorScheme, .dark)
         .onAppear { store.refreshIfStale(olderThan: 300) }
     }
 
-    private var footer: some View {
+    private var header: some View {
         HStack(spacing: 8) {
-            Button("Refresh") {
-                Task { await store.refresh() }
-            }
-            .disabled(store.isRefreshing)
+            GlassSegmented(
+                options: [.init(.usage, "Usage"), .init(.settings, "Settings")],
+                selection: $tab
+            )
 
-            Button {
-                showingSettings.toggle()
-            } label: {
-                Image(systemName: "gearshape")
-            }
-            .help("Settings")
-
-            Spacer()
-
-            Button("Quit") {
-                NSApplication.shared.terminate(nil)
+            if tab == .usage {
+                GlassButton(label: "", systemImage: "arrow.clockwise", enabled: !store.isRefreshing) {
+                    Task { await store.refresh() }
+                }
+                .help("Refresh now")
             }
         }
-        .font(.system(size: 11))
-        .buttonStyle(.borderless)
+        .padding(.horizontal, 18)
+        .padding(.vertical, 14)
+    }
+
+    private var usageFooter: some View {
+        HStack(spacing: 12) {
+            Text(footerText)
+                .font(.system(size: 11))
+                .foregroundStyle(Glass.ink(0.4))
+            Spacer(minLength: 8)
+            GlassLink(title: "Quit") { NSApplication.shared.terminate(nil) }
+        }
+    }
+
+    private var footerText: String {
+        let every = "every \(Int(Preferences.shared.refreshMinutes)) min"
+        guard let report = store.report else { return "No reading yet · \(every)" }
+        if store.isRefreshing { return "Refreshing… · \(every)" }
+        let stale = report.isStale ? " (stale)" : ""
+        return "Updated \(report.updatedLabel)\(stale) · \(every)"
     }
 }
 
 // --------------------------------------------------------------------- //
 
-private struct SettingsView: View {
+/// Settings as inset groups rather than one flat run of checkboxes: switches
+/// for the on/off knobs, segmented controls for the either/or ones, and
+/// sliders for the thresholds that used to be ±5 arithmetic on a stepper.
+private struct SettingsTab: View {
     @EnvironmentObject private var store: UsageStore
     @ObservedObject private var preferences = Preferences.shared
     @State private var opensAtLogin = Preferences.shared.opensAtLogin
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("MENU BAR")
-                .font(.system(size: 9, weight: .medium))
-                .kerning(0.6)
-                .foregroundStyle(.tertiary)
-
-            HStack(spacing: 14) {
-                partToggle("Logo", isOn: $preferences.showLogoInMenuBar)
-                partToggle("Gauge", isOn: $preferences.showGaugeInMenuBar)
-                partToggle("Percent", isOn: $preferences.showPercentInMenuBar)
-            }
-
-            // Rides inside the gauge rather than beside it, so it widens
-            // nothing — and has nowhere to go once the gauge is off.
-            Toggle("Mark the window inside the gauge (w, h)", isOn: $preferences.showWindowInMenuBar)
-                .disabled(!preferences.showGaugeInMenuBar)
-                .onChange(of: preferences.showWindowInMenuBar) { _, _ in
-                    store.iconPreferenceChanged()
+        VStack(alignment: .leading, spacing: 0) {
+            // Capped and scrolled rather than allowed to grow: the whole point
+            // of the tab is that the dropdown stays a predictable height.
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    menuBarGroup
+                    displayGroup
+                    alertsGroup
+                    refreshGroup
                 }
-
-            Stepper(value: $preferences.menuBarSlots, in: 1...4) {
-                Text(preferences.menuBarSlots == 1
-                    ? "Show the busiest window"
-                    : "Show the \(preferences.menuBarSlots) busiest windows")
+                .padding(EdgeInsets(top: 4, leading: 18, bottom: 14, trailing: 18))
             }
-            .onChange(of: preferences.menuBarSlots) { _, _ in
-                store.iconPreferenceChanged()
-            }
+            .scrollIndicators(.never)
+            .frame(maxHeight: 380)
 
-            Toggle("Always keep every provider on screen", isOn: $preferences.menuBarFairShare)
-                .disabled(preferences.menuBarSlots == 1)
-                .onChange(of: preferences.menuBarFairShare) { _, _ in
-                    store.iconPreferenceChanged()
-                }
-
-            Divider()
-
-            Toggle("Show card on desktop", isOn: $preferences.showDesktopCard)
-            Toggle("Keep card above other windows", isOn: $preferences.desktopCardFloats)
-                .disabled(!preferences.showDesktopCard)
-                .padding(.leading, 18)
-
-            Toggle("Open at login", isOn: $opensAtLogin)
-                .onChange(of: opensAtLogin) { _, wanted in
-                    let actual = preferences.setOpensAtLogin(wanted)
-                    if actual != wanted { opensAtLogin = actual }
-                }
-
-            Divider()
-
-            Toggle("Alert past", isOn: $preferences.usageAlertsEnabled)
-            stepperRow(
-                value: $preferences.usageThreshold,
-                range: 50...100,
-                step: 5,
-                enabled: preferences.usageAlertsEnabled,
-                text: "\(Int(preferences.usageThreshold))% of a window"
-            )
-
-            Toggle("Alert when burning faster than", isOn: $preferences.paceAlertsEnabled)
-            stepperRow(
-                value: $preferences.paceThreshold,
-                range: 1.1...4,
-                step: 0.1,
-                enabled: preferences.paceAlertsEnabled,
-                text: String(format: "%.1f× the even pace", preferences.paceThreshold)
-            )
-
-            Divider()
-
-            stepperRow(
-                value: $preferences.refreshMinutes,
-                range: 1...120,
-                step: 5,
-                enabled: true,
-                text: "Refresh every \(Int(preferences.refreshMinutes)) min"
-            )
+            // Quit stays put instead of hiding at the bottom of the scroll.
+            footer
+                .padding(EdgeInsets(top: 0, leading: 18, bottom: 18, trailing: 18))
         }
-        .font(.system(size: 11))
-        .toggleStyle(.checkbox)
+    }
+
+    // ----------------------------------------------------------------- //
+
+    private var menuBarGroup: some View {
+        Group {
+            groupTitle("Menu bar")
+
+            DividedRows {
+                SettingRow(title: "Provider logo") {
+                    partSwitch($preferences.showLogoInMenuBar)
+                }
+                SettingRow(title: "Usage gauge") {
+                    partSwitch($preferences.showGaugeInMenuBar)
+                }
+                SettingRow(title: "Percentage") {
+                    partSwitch($preferences.showPercentInMenuBar)
+                }
+                SettingRow(
+                    title: "Window initial in the gauge",
+                    subtitle: "rides inside the ring, so it widens nothing",
+                    enabled: preferences.showGaugeInMenuBar
+                ) {
+                    GlassSwitch(isOn: $preferences.showWindowInMenuBar, enabled: preferences.showGaugeInMenuBar)
+                        .onChange(of: preferences.showWindowInMenuBar) { _, _ in
+                            store.iconPreferenceChanged()
+                        }
+                }
+                SettingRow(title: "Windows shown") {
+                    GlassSegmented(
+                        options: (1...4).map { .init($0, "\($0)") },
+                        selection: $preferences.menuBarSlots,
+                        fontSize: 11,
+                        verticalPadding: 4
+                    )
+                    .frame(width: 132)
+                    .onChange(of: preferences.menuBarSlots) { _, _ in
+                        store.iconPreferenceChanged()
+                    }
+                }
+                SettingRow(
+                    title: "Keep every provider on screen",
+                    subtitle: "even when one provider owns the busiest windows",
+                    enabled: preferences.menuBarSlots > 1
+                ) {
+                    GlassSwitch(isOn: $preferences.menuBarFairShare, enabled: preferences.menuBarSlots > 1)
+                        .onChange(of: preferences.menuBarFairShare) { _, _ in
+                            store.iconPreferenceChanged()
+                        }
+                }
+            }
+        }
+    }
+
+    private var displayGroup: some View {
+        Group {
+            groupTitle("Display")
+
+            DividedRows {
+                SettingRow(title: "Card on desktop") {
+                    GlassSwitch(isOn: $preferences.showDesktopCard)
+                }
+                SettingRow(title: "Card layer", enabled: preferences.showDesktopCard) {
+                    GlassSegmented(
+                        options: [.init(false, "Desktop"), .init(true, "Floating")],
+                        selection: $preferences.desktopCardFloats,
+                        fontSize: 11,
+                        verticalPadding: 4,
+                        enabled: preferences.showDesktopCard
+                    )
+                    .frame(width: 160)
+                }
+                SettingRow(title: "Open at login") {
+                    GlassSwitch(isOn: $opensAtLogin)
+                        .onChange(of: opensAtLogin) { _, wanted in
+                            let actual = preferences.setOpensAtLogin(wanted)
+                            if actual != wanted { opensAtLogin = actual }
+                        }
+                }
+            }
+        }
+    }
+
+    private var alertsGroup: some View {
+        Group {
+            groupTitle("Alerts")
+
+            VStack(alignment: .leading, spacing: 16) {
+                threshold(
+                    title: "Alert past",
+                    value: String(format: "%.0f%%", preferences.usageThreshold),
+                    isOn: $preferences.usageAlertsEnabled,
+                    slider: $preferences.usageThreshold,
+                    range: 50...100,
+                    step: 5,
+                    colors: [Pace.warn, Color(red: 1, green: 0.549, blue: 0.235)],
+                    bounds: ("50%", "100%")
+                )
+
+                threshold(
+                    title: "Alert when burning faster than",
+                    value: String(format: "%.1f×", preferences.paceThreshold),
+                    isOn: $preferences.paceAlertsEnabled,
+                    slider: $preferences.paceThreshold,
+                    range: 1.1...4,
+                    step: 0.1,
+                    colors: [Pace.warn, Pace.bad],
+                    bounds: ("1.1×", "4×")
+                )
+            }
+            .glassGroup()
+        }
+    }
+
+    private var refreshGroup: some View {
+        Group {
+            groupTitle("Refresh")
+
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Refresh every")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Glass.ink(0.92))
+
+                GlassSegmented(
+                    options: [.init(5.0, "5"), .init(15.0, "15"), .init(30.0, "30"), .init(60.0, "60 min")],
+                    selection: $preferences.refreshMinutes
+                )
+            }
+            .glassGroup()
+        }
+    }
+
+    private var footer: some View {
+        HStack(spacing: 12) {
+            Text("v\(Self.version) · io.github.ai-usage")
+                .font(.system(size: 11))
+                .foregroundStyle(Glass.ink(0.4))
+            Spacer(minLength: 8)
+            GlassLink(title: "Quit") { NSApplication.shared.terminate(nil) }
+        }
+    }
+
+    private static var version: String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev"
+    }
+
+    // ----------------------------------------------------------------- //
+
+    private func groupTitle(_ text: String) -> some View {
+        Text(text.uppercased())
+            .font(.system(size: 10, weight: .medium))
+            .kerning(1.3)
+            .foregroundStyle(Glass.ink(0.42))
+            .padding(.leading, 4)
+            .padding(.top, 2)
+    }
+
+    private func threshold(
+        title: String,
+        value: String,
+        isOn: Binding<Bool>,
+        slider: Binding<Double>,
+        range: ClosedRange<Double>,
+        step: Double,
+        colors: [Color],
+        bounds: (String, String)
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(spacing: 10) {
+                Text(title)
+                    .font(.system(size: 13))
+                    .foregroundStyle(Glass.ink(isOn.wrappedValue ? 0.92 : 0.4))
+                Spacer(minLength: 8)
+                Text(value)
+                    .font(.system(size: 13, weight: .semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(Glass.ink(isOn.wrappedValue ? 1 : 0.4))
+                GlassSwitch(isOn: isOn)
+            }
+
+            GlassSlider(
+                value: slider,
+                range: range,
+                step: step,
+                colors: colors,
+                enabled: isOn.wrappedValue
+            )
+
+            HStack {
+                Text(bounds.0)
+                Spacer()
+                Text(bounds.1)
+            }
+            .font(.system(size: 10))
+            .monospacedDigit()
+            .foregroundStyle(Glass.ink(0.35))
+        }
     }
 
     /// The last part standing is locked on: a menu bar item with nothing drawn
     /// in it cannot be clicked back open to undo the mistake.
-    private func partToggle(_ title: String, isOn: Binding<Bool>) -> some View {
+    private func partSwitch(_ isOn: Binding<Bool>) -> some View {
         let enabledParts = [
             preferences.showLogoInMenuBar,
             preferences.showGaugeInMenuBar,
             preferences.showPercentInMenuBar,
         ].filter { $0 }.count
+        let locked = isOn.wrappedValue && enabledParts == 1
 
-        return Toggle(title, isOn: isOn)
-            .disabled(isOn.wrappedValue && enabledParts == 1)
+        return GlassSwitch(isOn: isOn, enabled: !locked)
             .onChange(of: isOn.wrappedValue) { _, _ in
                 store.iconPreferenceChanged()
             }
     }
+}
 
-    private func stepperRow(
-        value: Binding<Double>,
-        range: ClosedRange<Double>,
-        step: Double,
-        enabled: Bool,
-        text: String
-    ) -> some View {
-        Stepper(value: value, in: range, step: step) {
-            Text(text)
-                .foregroundStyle(enabled ? .primary : .tertiary)
+// --------------------------------------------------------------------- //
+
+/// An inset group whose rows are separated by hairlines rather than spacing —
+/// the shape macOS System Settings uses for a run of related switches.
+private struct DividedRows<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(spacing: 0) {
+            _VariadicView.Tree(Layout()) { content }
         }
-        .disabled(!enabled)
+        .padding(.horizontal, 14)
+        .background(
+            RoundedRectangle(cornerRadius: Glass.groupRadius, style: .continuous)
+                .fill(Color.white.opacity(0.07))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: Glass.groupRadius, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.11), lineWidth: 1)
+        )
+    }
+
+    private struct Layout: _VariadicView.UnaryViewRoot {
+        func body(children: _VariadicView.Children) -> some View {
+            let last = children.last?.id
+
+            ForEach(children) { child in
+                VStack(spacing: 0) {
+                    child.padding(.vertical, 11)
+                    if child.id != last {
+                        Rectangle()
+                            .fill(Color.white.opacity(0.09))
+                            .frame(height: 1)
+                    }
+                }
+            }
+        }
     }
 }
