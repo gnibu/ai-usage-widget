@@ -1,4 +1,4 @@
-// AI usage widget — Claude Code + Codex rate limits, refreshed hourly.
+// AI usage widget — Claude Code + Codex rate limits, refreshed every 15 min.
 //
 // The widget only reads a plain JSON file of percentages. The privileged work
 // (Keychain read, OAuth calls) is done by the io.github.ai-usage launch agent,
@@ -11,7 +11,7 @@ import { run } from "uebersicht";
 
 export const command = "cat $HOME/.local/share/ai-usage/usage.json";
 
-export const refreshFrequency = 300000; // re-read the cached file every 5 min
+export const refreshFrequency = 120000; // re-read the cached file every 2 min
 
 export const className = `
   top: 40px;
@@ -329,7 +329,7 @@ export const render = ({ output, error }) => {
     if (!data) {
       body = <div className="err">no data yet</div>;
     } else {
-      const stale = Date.now() / 1000 - data.updated_at > 7200;
+      const stale = Date.now() / 1000 - data.updated_at > 2700;
       body = (
         <div>
           <div className="head">

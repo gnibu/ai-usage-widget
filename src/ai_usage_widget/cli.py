@@ -29,7 +29,7 @@ AGENT_DIR = os.path.expanduser("~/Library/LaunchAgents")
 AGENT_PATH = os.path.join(AGENT_DIR, f"{LABEL}.plist")
 UBERSICHT_APP = "/Applications/Übersicht.app"
 
-REFRESH_SECONDS = 3600
+REFRESH_SECONDS = 900
 
 
 # --------------------------------------------------------------------------- #
@@ -75,7 +75,7 @@ def _format_report(report: dict[str, Any]) -> str:
 # --------------------------------------------------------------------------- #
 
 def cmd_fetch(args: argparse.Namespace) -> int:
-    """Refresh the cache. This is what the launch agent runs every hour."""
+    """Refresh the cache. This is what the launch agent runs on its interval."""
     report = usage.write_report()
     if args.quiet:
         return 0
@@ -225,7 +225,7 @@ def main(argv: list[str] | None = None) -> int:
     status = sub.add_parser("status", help="show the cached reading, no network")
     status.set_defaults(func=cmd_status)
 
-    install = sub.add_parser("install", help="deploy the widget and hourly launch agent")
+    install = sub.add_parser("install", help="deploy the widget and its refresh agent")
     install.add_argument("-y", "--yes", action="store_true", help="assume yes to prompts")
     install.set_defaults(func=cmd_install)
 

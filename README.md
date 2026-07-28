@@ -2,7 +2,7 @@
 
 A macOS desktop widget showing how much of your **Claude Code** and **Codex**
 quota you have burned, and whether you are burning it faster than the window
-refills. Refreshes hourly.
+refills. Refreshes every 15 minutes.
 
 ```
 AI USAGE                          05:07
@@ -30,7 +30,7 @@ pipx install git+https://github.com/gnibu/ai-usage-widget.git
 ai-usage install
 ```
 
-`ai-usage install` deploys the widget, registers an hourly launch agent, offers
+`ai-usage install` deploys the widget, registers the refresh launch agent, offers
 to `brew install --cask ubersicht` if needed, and does a first fetch. Übersicht's
 first launch shows a Gatekeeper prompt ("app downloaded from the Internet") —
 click **Open**.
@@ -59,7 +59,7 @@ ai-usage install
 | `ai-usage` / `ai-usage fetch` | refresh from both providers, print a summary |
 | `ai-usage fetch --json` | same, raw report on stdout |
 | `ai-usage status` | show the cached reading and agent state, no network |
-| `ai-usage install` | deploy widget + hourly launch agent |
+| `ai-usage install` | deploy widget + refresh launch agent |
 | `ai-usage uninstall [--purge]` | remove them (`--purge` also drops cached data) |
 | `ai-usage paths` | print every path the tool touches |
 
@@ -76,8 +76,8 @@ Three pieces, deliberately split so the desktop widget never handles credentials
 | Piece | Lives at | Job |
 | --- | --- | --- |
 | `ai-usage fetch` | pipx venv, shim in `~/.local/bin` | reads tokens, calls both usage APIs, writes the cache |
-| `io.github.ai-usage.plist` | `~/Library/LaunchAgents/` | runs `ai-usage fetch --quiet` hourly (`StartInterval 3600`, `RunAtLoad`) |
-| `ai-usage.jsx` | `~/Library/Application Support/Übersicht/widgets/` | `cat`s the cache every 5 min and draws it |
+| `io.github.ai-usage.plist` | `~/Library/LaunchAgents/` | runs `ai-usage fetch --quiet` every 15 min (`StartInterval 900`, `RunAtLoad`) |
+| `ai-usage.jsx` | `~/Library/Application Support/Übersicht/widgets/` | `cat`s the cache every 2 min and draws it |
 
 The cache is `~/.local/share/ai-usage/usage.json` (override the directory with
 `AI_USAGE_DIR`). The widget re-reads it more often than the agent refetches, so
@@ -148,7 +148,7 @@ cat ~/.local/share/ai-usage/error.log                 # agent stderr
 ```
 
 Then Refresh from Übersicht's menu bar icon. The widget header shows `(stale)`
-once the cache is more than two hours old.
+once the cache is more than 45 minutes old.
 
 **`token expired — run claude` / `run codex`**
 
