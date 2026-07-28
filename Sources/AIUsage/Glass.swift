@@ -50,9 +50,13 @@ extension View {
     ///
     /// `tint` colours the sheen and the border together, which is how the hot
     /// state is expressed: the same card, lit red from inside.
+    /// `saturation` is the design's `backdrop-filter: saturate(180%)`: the blur
+    /// alone greys out whatever is behind the pane, and putting the colour back
+    /// is most of what makes it read as glass rather than as fog.
     func glassPane(
         radius: CGFloat,
         tint: Color? = nil,
+        saturation: Double = 1,
         shadow: Bool = true
     ) -> some View {
         let sheen = Glass.sheen(tint: tint ?? .white, top: tint == nil ? 0.18 : 0.20)
@@ -61,6 +65,7 @@ extension View {
         return background {
             RoundedRectangle(cornerRadius: radius, style: .continuous)
                 .fill(.ultraThinMaterial)
+                .saturation(saturation)
                 .overlay(
                     RoundedRectangle(cornerRadius: radius, style: .continuous).fill(sheen)
                 )
