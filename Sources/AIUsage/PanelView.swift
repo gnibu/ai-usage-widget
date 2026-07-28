@@ -90,7 +90,7 @@ private struct SettingsTab: View {
         VStack(alignment: .leading, spacing: 0) {
             // Capped and scrolled rather than allowed to grow: the whole point
             // of the tab is that the dropdown stays a predictable height.
-            ScrollView {
+            CappedScroll(maxHeight: Self.cap) {
                 VStack(alignment: .leading, spacing: 14) {
                     menuBarGroup
                     displayGroup
@@ -99,13 +99,20 @@ private struct SettingsTab: View {
                 }
                 .padding(EdgeInsets(top: 4, leading: 18, bottom: 14, trailing: 18))
             }
-            .scrollIndicators(.never)
-            .frame(maxHeight: 380)
 
             // Quit stays put instead of hiding at the bottom of the scroll.
             footer
                 .padding(EdgeInsets(top: 0, leading: 18, bottom: 18, trailing: 18))
         }
+    }
+
+    /// How tall the settings list is allowed to get before it starts scrolling.
+    /// Measured against the screen rather than fixed, so a large display shows
+    /// nearly the whole list while a laptop still leaves room for the header,
+    /// the footer and the menu bar the panel hangs from.
+    private static var cap: CGFloat {
+        let available = (NSScreen.main?.visibleFrame.height ?? 800) - 180
+        return min(640, max(320, available))
     }
 
     // ----------------------------------------------------------------- //
@@ -359,5 +366,86 @@ private struct DividedRows<Content: View>: View {
                 }
             }
         }
+    }
+}
+
+// --------------------------------------------------------------------- //
+
+/// A scroll area that admits it is one.
+///
+/// A hard cut at the cap is indistinguishable from the end of the list, and on
+/// a trackpad macOS keeps the scroller hidden until you are already scrolling —
+/// so the tab looked like it simply stopped after Refresh. The clipped edge now
+/// fades while there is more content past it, at whichever end is cut off, and
+/// firms up once you reach it. Below the cap it does not scroll and shows no
+/// fade at all.
+private struct CappedScroll<Content: View>: View {
+    let maxHeight: CGFloat
+    @ViewBuilder let content: Content
+
+    /// Top of the content within the scroll area: 0 at rest, negative once
+    /// scrolled. Paired with the two heights it says which edge is cut off.
+    @State private var offset: CGFloat = 0
+    @State private var contentHeight: CGFloat = 0
+    @State private var viewportHeight: CGFloat = 0
+
+    private let fade: CGFloat = 26
+    private let space = "capped-scroll"
+
+    private var hiddenAbove: Bool { viewportHeight > 0 && offset < -0.5 }
+    private var hiddenBelow: Bool { viewportHeight > 0 && contentHeight + offset - viewportHeight > 0.5 }
+
+    var body: some View {
+        ScrollView {
+            content.background(
+                GeometryReader { inner in
+                    Color.clear.preference(
+                        key: ReachKey.self,
+                        value: Reach(
+                            offset: inner.frame(in: .named(space)).minY,
+                            height: inner.size.height
+                        )
+                    )
+                }
+            )
+        }
+        .coordinateSpace(name: space)
+        .frame(maxHeight: maxHeight)
+        // An overlay is measured without being given a say in the layout, which
+        // is what keeps a short list sized to its content rather than the cap.
+        .overlay(
+            GeometryReader { viewport in
+                Color.clear
+                    .onAppear { viewportHeight = viewport.size.height }
+                    .onChange(of: viewport.size.height) { _, height in viewportHeight = height }
+            }
+        )
+        .onPreferenceChange(ReachKey.self) { reach in
+            offset = reach.offset
+            contentHeight = reach.height
+        }
+        .mask(
+            VStack(spacing: 0) {
+                LinearGradient(colors: [.black.opacity(0), .black], startPoint: .top, endPoint: .bottom)
+                    .frame(height: hiddenAbove ? fade : 0)
+                Rectangle()
+                LinearGradient(colors: [.black, .black.opacity(0)], startPoint: .top, endPoint: .bottom)
+                    .frame(height: hiddenBelow ? fade : 0)
+            }
+        )
+    }
+}
+
+/// Where the scrolled content currently sits. At file scope because a generic
+/// type cannot hold the static default a PreferenceKey needs.
+private struct Reach: Equatable {
+    var offset: CGFloat = 0
+    var height: CGFloat = 0
+}
+
+private struct ReachKey: PreferenceKey {
+    static let defaultValue = Reach()
+    static func reduce(value: inout Reach, nextValue: () -> Reach) {
+        value = nextValue()
     }
 }
