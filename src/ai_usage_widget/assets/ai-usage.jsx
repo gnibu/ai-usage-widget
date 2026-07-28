@@ -205,7 +205,8 @@ const clock = (date) =>
 // Absolute reset time. Bare clock today, weekday within the week, and a date
 // beyond that — a weekday alone would be ambiguous once it wraps around.
 const resetLabel = (epoch) => {
-  if (!epoch) return "";
+  // An untouched window has no reset instant yet — the clock starts on first use.
+  if (!epoch) return "idle";
   const at = new Date(epoch * 1000);
   const now = new Date();
   if (at <= now) return "now";
