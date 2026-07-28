@@ -15,7 +15,7 @@ final class DesktopCard {
     private var observers: [NSObjectProtocol] = []
     private var isRepositioning = false
 
-    private let width: CGFloat = 300
+    private let width: CGFloat = 460
     private let inset: CGFloat = 30
 
     private init() {}
@@ -151,16 +151,23 @@ final class DesktopCard {
 // --------------------------------------------------------------------- //
 
 /// The card plus the chrome that only makes sense free-standing on the desktop.
+///
+/// The pane goes red from the inside once the worst window is in trouble — the
+/// card is glanced at, not read, so the state has to survive peripheral vision.
 private struct CardWindowView: View {
     @EnvironmentObject private var store: UsageStore
 
     var body: some View {
-        UsageCard()
-            .padding(EdgeInsets(top: 14, leading: 16, bottom: 12, trailing: 16))
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .strokeBorder(.white.opacity(0.08))
+        let hot = Pace.verdict(store.report).hot
+
+        DesktopUsageCard()
+            .padding(EdgeInsets(top: 20, leading: 22, bottom: 18, trailing: 22))
+            // The drop shadow is the panel's own: a SwiftUI one would be
+            // clipped by the window it is drawn inside.
+            .glassPane(
+                radius: Glass.cardRadius,
+                tint: hot ? Color(red: 1, green: 0.471, blue: 0.471) : nil,
+                shadow: false
             )
             .contextMenu {
                 Button("Refresh now") {

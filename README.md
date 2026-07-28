@@ -52,23 +52,32 @@ busiest. Tick *Always keep every provider on screen* to hand each provider a
 slot first instead, so a quiet Codex stays visible beside a loud Claude at the
 cost of bumping a window that really is busier. The window's initial sits in the hole
 of the ring (`w` week, `h` 5-hour, `s` spark week), which is the one place a
-menu bar has room to spare. Click it for the full card, a **Refresh** button and
-settings.
+menu bar has room to spare. Click it for the dropdown.
 
-**Desktop card.** The same card, free-standing. Drag it anywhere; the position
-is remembered by its top left corner, so it stays put when a row appears. It
-sits just above the desktop icons and behind every window by default — tick
-*Keep card above other windows* to float it instead. Right-click it for refresh,
-hide and quit.
+**Dropdown.** Two tabs on a pane of glass. *Usage* leads with one line saying
+whether you are fine — "On pace everywhere", or how far ahead of an even burn
+the worst window is — then a row per window, with a **Refresh** button beside
+the tabs. *Settings* holds everything else, so opening it can no longer push the
+reading off the bottom of the screen.
+
+**Desktop card.** The same reading, free-standing and roomier: a ring for the
+worst window, the summary line, and a block per provider with a word for how
+that provider on its own is doing. The whole card lights red from the inside
+once a window is in trouble, so the state survives peripheral vision. Drag it
+anywhere; the position is remembered by its top left corner, so it stays put
+when a row appears. It sits just above the desktop icons and behind every window
+by default — set *Card layer* to *Floating* to keep it in front instead.
+Right-click it for refresh, hide and quit.
 
 **Notifications.** One alert when a window passes your threshold, one when it is
 burning faster than your pace multiple. Each fires at most once per window; the
 moment a window resets, the slate is wiped and the next crossing is announced
 again.
 
-Settings live behind the gear: which menu bar parts to draw and how many
-windows, desktop card on/off and its level, open at login, both alert
-thresholds, and the refresh interval.
+The Settings tab groups them the way System Settings does: *Menu bar* (which
+parts to draw, how many windows), *Display* (desktop card on/off, its layer,
+open at login), *Alerts* (both thresholds, on sliders rather than steppers), and
+*Refresh* (5, 15, 30 or 60 minutes).
 
 ### Why not a WidgetKit widget
 
@@ -91,6 +100,7 @@ bar ring, the dropdown and the desktop card can never disagree.
 | `Report.swift` | the JSON written to the cache |
 | `Pace.swift` | elapsed share, pace ratio, colours, reset labels |
 | `UsageCard.swift` | the reading, shared by the dropdown and the desktop card |
+| `Glass.swift` | the glass surfaces, tracks, ring and controls both are built from |
 | `StatusIcon.swift` | the menu bar item — logo, ring, percentage |
 | `BrandGlyph.swift` | reads `Resources/Icons/*.svg` into drawable outlines |
 | `Notifier.swift` | threshold and pace alerts, one per window instance |
@@ -153,7 +163,7 @@ alive with `pgrep -fl "AI Usage"`, then look in your manager's hidden section.
 **Desktop card missing**
 
 By default it sits behind every window, so a maximised window hides it. Show the
-desktop, or tick *Keep card above other windows*. If it was dragged to a screen
+desktop, or set *Card layer* to *Floating*. If it was dragged to a screen
 that is no longer attached, it comes back to the top right on the next launch.
 
 **No notifications**

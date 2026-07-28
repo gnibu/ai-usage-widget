@@ -8,6 +8,25 @@ enum Pace {
     static let warn = Color(red: 1.000, green: 0.706, blue: 0.329)   // #ffb454
     static let bad = Color(red: 1.000, green: 0.420, blue: 0.420)    // #ff6b6b
 
+    /// The three shades a filled track is drawn in. The flat colour is what the
+    /// menu bar and the ring use; the gradient is what gives the fill in a
+    /// recessed groove its curvature.
+    struct Palette {
+        let base: Color
+        let top: Color
+        let bottom: Color
+
+        var fill: LinearGradient {
+            LinearGradient(colors: [top, bottom], startPoint: .top, endPoint: .bottom)
+        }
+    }
+
+    static let idleFill = LinearGradient(
+        colors: [.white.opacity(0.5), .white.opacity(0.3)],
+        startPoint: .top,
+        endPoint: .bottom
+    )
+
     struct Severity: Comparable {
         let tier: Int
         let percent: Double
@@ -38,6 +57,14 @@ enum Pace {
         return window.percent / elapsed
     }
 
+    /// The same reading as a percentage, which is how the summary states it:
+    /// spending measured against the even-burn mark on the track rather than
+    /// against the whole budget. 100 sits exactly on the mark, 150 is half
+    /// again past it. Nil while the mark is still too early to mean anything.
+    static func paceIndex(_ window: UsageWindow, now: Date = Date()) -> Double? {
+        ratio(window, now: now).map { $0 * 100 }
+    }
+
     /// Green while spending is at or under the even-burn pace, orange when
     /// running ahead of it, red when far ahead or nearly exhausted.
     static func color(_ window: UsageWindow, now: Date = Date()) -> Color {
@@ -45,6 +72,29 @@ enum Pace {
         case 2: return bad
         case 1: return warn
         default: return good
+        }
+    }
+
+    static func palette(_ window: UsageWindow, now: Date = Date()) -> Palette {
+        switch severityTier(window, now: now) {
+        case 2:
+            return Palette(
+                base: bad,
+                top: Color(red: 1.000, green: 0.604, blue: 0.604),   // #ff9a9a
+                bottom: Color(red: 0.902, green: 0.310, blue: 0.310)  // #e64f4f
+            )
+        case 1:
+            return Palette(
+                base: warn,
+                top: Color(red: 1.000, green: 0.816, blue: 0.541),   // #ffd08a
+                bottom: Color(red: 0.941, green: 0.604, blue: 0.188)  // #f09a30
+            )
+        default:
+            return Palette(
+                base: good,
+                top: Color(red: 0.549, green: 0.910, blue: 0.678),   // #8ce8ad
+                bottom: Color(red: 0.294, green: 0.722, blue: 0.478)  // #4bb87a
+            )
         }
     }
 
@@ -70,6 +120,101 @@ enum Pace {
             percent: window.percent,
             pace: ratio(window, now: now) ?? 0
         )
+    }
+
+    /// One sentence answering "am I fine?", so neither surface makes the reader
+    /// parse four rows to find out.
+    struct Verdict {
+        /// Title of the dropdown's summary pill, over `detail`.
+        let headline: String
+        /// The card's one line, which has to carry the number as well.
+        let line: String
+        let detail: String
+        let percent: Double
+        /// Share of the window elapsed, for the ring's even-burn mark.
+        let elapsed: Double?
+        /// "Anthropic 5h" — the row the whole summary is speaking about, named
+        /// so that the ring is not an anonymous number.
+        let source: String?
+        /// Identifies that row in the list below, so it can be marked there too.
+        let rowKey: String?
+        let color: Color
+        /// True once the reading is bad enough that the whole card goes red.
+        let hot: Bool
+    }
+
+    static func verdict(_ report: Report?, now: Date = Date()) -> Verdict {
+        guard let worst = report?.busiestWindows(limit: 1, now: now).first else {
+            return Verdict(
+                headline: "No reading yet",
+                line: "No reading yet",
+                detail: "nothing fetched",
+                percent: 0,
+                elapsed: nil,
+                source: nil,
+                rowKey: nil,
+                color: good,
+                hot: false
+            )
+        }
+
+        let window = worst.window
+        let tier = severityTier(window, now: now)
+        let exhausted = tier == 2 && window.percent >= 90
+        let reading = readingPhrase(window, now: now)
+
+        let short: String
+        switch tier {
+        case 2: short = "Well ahead of pace"
+        case 1: short = "Ahead of pace"
+        default: short = "On pace"
+        }
+
+        return Verdict(
+            headline: exhausted ? "\(window.label) window nearly out" : (tier == 0 ? "On pace everywhere" : short),
+            line: exhausted
+                ? "\(window.label) window nearly out — \(reading)"
+                : "\(short) — \(reading)",
+            detail: "worst: \(worst.provider.name) \(window.label), \(reading)",
+            percent: window.percent,
+            elapsed: elapsedPercent(window, now: now),
+            source: "\(worst.provider.name) \(window.label)",
+            rowKey: Report.rowKey(provider: worst.provider, window: window),
+            color: color(window, now: now),
+            hot: tier == 2
+        )
+    }
+
+    /// The number the summary quotes. Against the even-burn mark once there is
+    /// one, since "63% of the week" says nothing about whether that is early or
+    /// late; against the budget only while the window is too young for a mark.
+    private static func readingPhrase(_ window: UsageWindow, now: Date) -> String {
+        if let index = paceIndex(window, now: now) {
+            return "\(Int(index.rounded()))% of pace"
+        }
+        return "\(Int(window.percent.rounded()))% of \(phrase(window.label))"
+    }
+
+    /// Window labels are a mix of periods and durations: "the week" reads, but
+    /// "the 5h" does not and needs the noun spelling out.
+    private static func phrase(_ label: String) -> String {
+        let period = ["week", "day", "month", "hour", "session"].contains { label.contains($0) }
+        return period ? "the \(label)" : "the \(label) window"
+    }
+
+    /// The word beside a provider's name: how that provider on its own is doing.
+    static func note(_ provider: Provider, now: Date = Date()) -> (text: String, color: Color) {
+        guard provider.ok else { return (provider.error ?? "unavailable", bad) }
+        guard let worst = provider.windows.max(by: { severity($0, now: now) < severity($1, now: now) })
+        else { return ("no windows", .white.opacity(0.45)) }
+
+        if worst.percent < 5 { return ("barely touched", .white.opacity(0.45)) }
+        switch severityTier(worst, now: now) {
+        case 2 where worst.percent >= 90: return ("nearly out", bad)
+        case 2: return ("over budget", bad)
+        case 1: return ("ahead of pace", warn)
+        default: return ("under budget", good)
+        }
     }
 
     /// Absolute reset time. Bare clock today, weekday within the week, and a

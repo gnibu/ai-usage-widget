@@ -1,17 +1,16 @@
+import AppKit
 import SwiftUI
 
+/// Plain AppKit rather than a SwiftUI `App`: the only scene this ever had was a
+/// `MenuBarExtra`, and that window comes with chrome we cannot turn off — see
+/// `MenuBarItem`. Without it there is no scene left to declare.
 @main
-struct AIUsageApp: App {
-    @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
-    @StateObject private var store = UsageStore.shared
-
-    var body: some Scene {
-        MenuBarExtra {
-            PanelView().environmentObject(store)
-        } label: {
-            Image(nsImage: store.statusImage)
-        }
-        .menuBarExtraStyle(.window)
+enum AIUsageApp {
+    static func main() {
+        let application = NSApplication.shared
+        let delegate = AppDelegate()
+        application.delegate = delegate
+        application.run()
     }
 }
 
@@ -22,6 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.accessory)
         Notifier.requestAuthorization()
         MainActor.assumeIsolated {
+            MenuBarItem.shared.start()
             DesktopCard.shared.start()
         }
     }
