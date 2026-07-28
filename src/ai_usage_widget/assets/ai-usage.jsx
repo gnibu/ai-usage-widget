@@ -105,7 +105,7 @@ export const className = `
     flex: none;
   }
   .reset {
-    width: 56px;
+    width: 68px;
     text-align: right;
     font-size: 9px;
     font-variant-numeric: tabular-nums;
@@ -197,18 +197,22 @@ const barColor = (pct, elapsed) => {
 };
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 const clock = (date) =>
   `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 
-// Absolute reset time: bare clock if it lands today, weekday-prefixed if later.
+// Absolute reset time. Bare clock today, weekday within the week, and a date
+// beyond that — a weekday alone would be ambiguous once it wraps around.
 const resetLabel = (epoch) => {
   if (!epoch) return "";
   const at = new Date(epoch * 1000);
   const now = new Date();
   if (at <= now) return "now";
-  const sameDay = at.toDateString() === now.toDateString();
-  return sameDay ? clock(at) : `${WEEKDAYS[at.getDay()]} ${clock(at)}`;
+  if (at.toDateString() === now.toDateString()) return clock(at);
+  const days = (at - now) / 86400000;
+  if (days >= 6) return `${MONTHS[at.getMonth()]} ${at.getDate()} ${clock(at)}`;
+  return `${WEEKDAYS[at.getDay()]} ${clock(at)}`;
 };
 
 export const render = ({ output, error }) => {
