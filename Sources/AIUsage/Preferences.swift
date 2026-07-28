@@ -8,8 +8,24 @@ final class Preferences: ObservableObject {
 
     private let defaults = UserDefaults.standard
 
+    /// The three parts of a menu bar segment. At least one stays on — the
+    /// settings pane locks the last one rather than allowing an empty item.
+    @Published var showLogoInMenuBar: Bool {
+        didSet { defaults.set(showLogoInMenuBar, forKey: Keys.showLogo) }
+    }
+
+    @Published var showGaugeInMenuBar: Bool {
+        didSet { defaults.set(showGaugeInMenuBar, forKey: Keys.showGauge) }
+    }
+
     @Published var showPercentInMenuBar: Bool {
         didSet { defaults.set(showPercentInMenuBar, forKey: Keys.showPercent) }
+    }
+
+    /// How many windows the menu bar speaks for at once. One is the window in
+    /// the most trouble; raising it brings the next-worst ones alongside.
+    @Published var menuBarSlots: Int {
+        didSet { defaults.set(menuBarSlots, forKey: Keys.menuBarSlots) }
     }
 
     /// The free-standing card on the desktop.
@@ -64,7 +80,10 @@ final class Preferences: ObservableObject {
     }
 
     private enum Keys {
+        static let showLogo = "showLogoInMenuBar"
+        static let showGauge = "showGaugeInMenuBar"
         static let showPercent = "showPercentInMenuBar"
+        static let menuBarSlots = "menuBarSlots"
         static let showDesktopCard = "showDesktopCard"
         static let desktopCardFloats = "desktopCardFloats"
         static let desktopCardAnchor = "desktopCardAnchor"
@@ -77,7 +96,10 @@ final class Preferences: ObservableObject {
 
     private init() {
         defaults.register(defaults: [
+            Keys.showLogo: true,
+            Keys.showGauge: true,
             Keys.showPercent: true,
+            Keys.menuBarSlots: 1,
             Keys.showDesktopCard: true,
             Keys.desktopCardFloats: false,
             Keys.usageThreshold: 90.0,
@@ -86,7 +108,10 @@ final class Preferences: ObservableObject {
             Keys.paceAlerts: true,
             Keys.refreshMinutes: 15.0,
         ])
+        showLogoInMenuBar = defaults.bool(forKey: Keys.showLogo)
+        showGaugeInMenuBar = defaults.bool(forKey: Keys.showGauge)
         showPercentInMenuBar = defaults.bool(forKey: Keys.showPercent)
+        menuBarSlots = max(1, defaults.integer(forKey: Keys.menuBarSlots))
         showDesktopCard = defaults.bool(forKey: Keys.showDesktopCard)
         desktopCardFloats = defaults.bool(forKey: Keys.desktopCardFloats)
         usageThreshold = defaults.double(forKey: Keys.usageThreshold)

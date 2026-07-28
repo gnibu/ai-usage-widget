@@ -13,7 +13,7 @@ final class UsageStore: ObservableObject {
 
     @Published private(set) var report: Report?
     @Published private(set) var isRefreshing = false
-    @Published private(set) var statusImage: NSImage = StatusIcon.image(percent: nil, color: .secondary)
+    @Published private(set) var statusImage: NSImage = StatusIcon.image(segments: [])
 
     static var stateDirectory: URL {
         if let override = ProcessInfo.processInfo.environment["AI_USAGE_DIR"], !override.isEmpty {
@@ -48,12 +48,14 @@ final class UsageStore: ObservableObject {
 
     // ----------------------------------------------------------------- //
 
-    /// The window in the most trouble, which is what the menu bar speaks for.
+    /// The window in the most trouble, which is what the menu bar leads with.
     var worstWindow: (provider: Provider, window: UsageWindow)? {
-        report?.providers
-            .filter(\.ok)
-            .flatMap { provider in provider.windows.map { (provider, $0) } }
-            .max { Pace.severity($0.1) < Pace.severity($1.1) }
+        menuBarWindows(limit: 1).first
+    }
+
+    /// What the menu bar speaks for.
+    func menuBarWindows(limit: Int) -> [(provider: Provider, window: UsageWindow)] {
+        report?.busiestWindows(limit: limit) ?? []
     }
 
     func refresh() async {
@@ -89,15 +91,21 @@ final class UsageStore: ObservableObject {
     }
 
     private func redrawIcon() {
-        guard let worst = worstWindow else {
-            statusImage = StatusIcon.image(percent: nil, color: .secondary)
-            return
+        let preferences = Preferences.shared
+        let segments = menuBarWindows(limit: preferences.menuBarSlots).map {
+            StatusIcon.Segment(
+                provider: $0.provider.name,
+                percent: $0.window.percent,
+                color: Pace.color($0.window)
+            )
         }
-        statusImage = StatusIcon.image(
-            percent: worst.window.percent,
-            color: Pace.color(worst.window),
-            showText: Preferences.shared.showPercentInMenuBar
-        )
+
+        var parts: StatusIcon.Parts = []
+        if preferences.showLogoInMenuBar { parts.insert(.mark) }
+        if preferences.showGaugeInMenuBar { parts.insert(.gauge) }
+        if preferences.showPercentInMenuBar { parts.insert(.percent) }
+
+        statusImage = StatusIcon.image(segments: segments, parts: parts)
     }
 
     /// Re-render after a preference change that only affects the icon.

@@ -59,10 +59,27 @@ private struct SettingsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Toggle("Show percentage in menu bar", isOn: $preferences.showPercentInMenuBar)
-                .onChange(of: preferences.showPercentInMenuBar) { _, _ in
-                    store.iconPreferenceChanged()
-                }
+            Text("MENU BAR")
+                .font(.system(size: 9, weight: .medium))
+                .kerning(0.6)
+                .foregroundStyle(.tertiary)
+
+            HStack(spacing: 14) {
+                partToggle("Logo", isOn: $preferences.showLogoInMenuBar)
+                partToggle("Gauge", isOn: $preferences.showGaugeInMenuBar)
+                partToggle("Percent", isOn: $preferences.showPercentInMenuBar)
+            }
+
+            Stepper(value: $preferences.menuBarSlots, in: 1...4) {
+                Text(preferences.menuBarSlots == 1
+                    ? "Show the busiest window"
+                    : "Show the \(preferences.menuBarSlots) busiest windows")
+            }
+            .onChange(of: preferences.menuBarSlots) { _, _ in
+                store.iconPreferenceChanged()
+            }
+
+            Divider()
 
             Toggle("Show card on desktop", isOn: $preferences.showDesktopCard)
             Toggle("Keep card above other windows", isOn: $preferences.desktopCardFloats)
@@ -107,6 +124,22 @@ private struct SettingsView: View {
         }
         .font(.system(size: 11))
         .toggleStyle(.checkbox)
+    }
+
+    /// The last part standing is locked on: a menu bar item with nothing drawn
+    /// in it cannot be clicked back open to undo the mistake.
+    private func partToggle(_ title: String, isOn: Binding<Bool>) -> some View {
+        let enabledParts = [
+            preferences.showLogoInMenuBar,
+            preferences.showGaugeInMenuBar,
+            preferences.showPercentInMenuBar,
+        ].filter { $0 }.count
+
+        return Toggle(title, isOn: isOn)
+            .disabled(isOn.wrappedValue && enabledParts == 1)
+            .onChange(of: isOn.wrappedValue) { _, _ in
+                store.iconPreferenceChanged()
+            }
     }
 
     private func stepperRow(

@@ -44,8 +44,12 @@ there is no `.xcodeproj`, `build.sh` assembles the bundle by hand.
 
 ## What you get
 
-**Menu bar.** A ring tinted by the window in the most trouble, labelled with its
-percentage. Click it for the full card, a **Refresh** button and settings.
+**Menu bar.** The window in the most trouble, as its provider's logo, a ring
+filled to its consumption and tinted by its pace, and the percentage. Any of the
+three can be switched off, and you can widen it to as many as four windows —
+every provider gets a slot before any provider gets a second one, so Codex stays
+visible even when Claude is the loud one. Click it for the full card, a
+**Refresh** button and settings.
 
 **Desktop card.** The same card, free-standing. Drag it anywhere; the position
 is remembered by its top left corner, so it stays put when a row appears. It
@@ -58,8 +62,9 @@ burning faster than your pace multiple. Each fires at most once per window; the
 moment a window resets, the slate is wiped and the next crossing is announced
 again.
 
-Settings live behind the gear: menu bar percentage on/off, desktop card on/off
-and its level, open at login, both alert thresholds, and the refresh interval.
+Settings live behind the gear: which menu bar parts to draw and how many
+windows, desktop card on/off and its level, open at login, both alert
+thresholds, and the refresh interval.
 
 ### Why not a WidgetKit widget
 
@@ -82,7 +87,8 @@ bar ring, the dropdown and the desktop card can never disagree.
 | `Report.swift` | the JSON written to the cache |
 | `Pace.swift` | elapsed share, pace ratio, colours, reset labels |
 | `UsageCard.swift` | the reading, shared by the dropdown and the desktop card |
-| `StatusIcon.swift` | the menu bar ring |
+| `StatusIcon.swift` | the menu bar item — logo, ring, percentage |
+| `BrandGlyph.swift` | reads `Resources/Icons/*.svg` into drawable outlines |
 | `Notifier.swift` | threshold and pace alerts, one per window instance |
 | `UsageStore.swift` | the single reading, its timer, and the cache |
 
@@ -127,7 +133,14 @@ rebuild. macOS may re-ask for Keychain consent after a rebuild; that is expected
 
 ## Troubleshooting
 
-**Menu bar ring missing**
+**Menu bar shows a letter instead of a logo**
+
+`BrandGlyph` falls back to the provider's initial when it cannot read
+`Resources/Icons`. That happens when the app is run straight out of `swift
+build` rather than from the bundle `build.sh` assembles. Point it at the working
+copy with `AI_USAGE_ICONS=$PWD/Resources/Icons`, or just use `./build.sh`.
+
+**Menu bar item missing**
 
 macOS hides status items when the bar runs out of room, and menu bar managers
 (Bartender, Ice, Hidden Bar) park them off-screen by default. Check the app is
@@ -173,4 +186,12 @@ defaults delete io.github.ai-usage
 
 ## License
 
-MIT
+Copyright © 2026 Benoit Pothier. Released under the MIT License — see
+[`LICENSE`](LICENSE).
+
+`Resources/Icons` holds the Claude and OpenAI marks, taken verbatim from
+[simple-icons](https://github.com/simple-icons/simple-icons), whose packaging is
+CC0. The marks themselves remain trademarks of Anthropic and OpenAI, and are
+used here only to identify whose quota a row is reporting. They are drawn
+monochrome and scaled uniformly, never recoloured, stretched or rotated. Neither
+company endorses or is affiliated with this project.

@@ -87,4 +87,26 @@ struct Report: Codable, Equatable {
     var isStale: Bool {
         Date().timeIntervalSince1970 - Double(updatedAt) > 2700
     }
+
+    /// The windows worth watching, worst first, but with every provider given a
+    /// slot before any provider gets a second one. Otherwise a busy Claude week
+    /// takes every slot and Codex is never seen at all.
+    func busiestWindows(limit: Int, now: Date = Date()) -> [(provider: Provider, window: UsageWindow)] {
+        guard limit > 0 else { return [] }
+        let ranked = providers
+            .filter(\.ok)
+            .flatMap { provider in provider.windows.map { (provider: provider, window: $0) } }
+            .sorted { Pace.severity($0.window, now: now) > Pace.severity($1.window, now: now) }
+
+        var claimed = Set<String>()
+        let leading = ranked.filter { claimed.insert($0.provider.name).inserted }
+        let taken = Set(leading.map(Self.key))
+        return Array((leading + ranked.filter { !taken.contains(Self.key($0)) }).prefix(limit))
+    }
+
+    /// Provider and window labels are each unique within a reading, but only
+    /// together do they identify one row.
+    private static func key(_ pair: (provider: Provider, window: UsageWindow)) -> String {
+        pair.provider.name + "\u{1}" + pair.window.label
+    }
 }
