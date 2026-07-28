@@ -17,6 +17,8 @@ enum RegressionTests {
         testShippedIconsParse()
         testArcFlagsAreReadOneCharacterWide()
         testWindowInitialSkipsDigits()
+        testMenuBarItemIsNeverZeroWidth()
+        testStrayArgumentAfterCloseIsRejected()
         print("All regression tests passed")
     }
 
@@ -163,6 +165,27 @@ enum RegressionTests {
             abs(spaced.bounds.height - 5) < 0.01,
             "a semicircle of radius 5 must be 5 tall, got \(spaced.bounds.height)"
         )
+    }
+
+    private static func testMenuBarItemIsNeverZeroWidth() {
+        // The empty reading has no provider to draw a mark for, so a logo-only
+        // item would have nothing in it at all. With no Dock tile, that leaves
+        // no way back to the settings or to Quit.
+        for parts in [StatusIcon.Parts.mark, .gauge, .percent, .window, []] {
+            let image = StatusIcon.image(segments: [], parts: parts)
+            check(
+                image.size.width > 0,
+                "an empty reading must stay clickable, got \(image.size) for \(parts)"
+            )
+        }
+    }
+
+    private static func testStrayArgumentAfterCloseIsRejected() {
+        // Close takes no arguments, so it has nothing to repeat over. Treating
+        // it as repeatable leaves the `1` here forever unconsumed, and the
+        // parse loop spins on it instead of giving up.
+        check(SVGPath.parse("M0 0Z1") == nil, "a stray argument after close must fail the parse")
+        check(SVGPath.parse("M0 0L1 1Z") != nil, "a well-formed close must still parse")
     }
 
     private static func testWindowInitialSkipsDigits() {

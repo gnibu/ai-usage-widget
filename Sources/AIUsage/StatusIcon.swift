@@ -67,10 +67,18 @@ enum StatusIcon {
     ]
 
     static func image(segments: [Segment], parts: Parts = .all) -> NSImage {
-        // An empty reading still needs something clickable in the menu bar, and
-        // an empty part set would leave nothing at all to click.
+        // An empty reading still needs something clickable in the menu bar.
         let drawn = segments.isEmpty ? [placeholder] : segments
-        let parts = parts.isEmpty ? .gauge : parts
+
+        // Whatever is asked for, the item has to end up with some width. An
+        // empty part set has nothing to draw, and so does a logo-only item
+        // whose segment has no provider to name — which is exactly what an
+        // empty reading is. Either way the app has no Dock tile, so a
+        // zero-width item would leave no way back to the settings or to Quit.
+        var parts = parts.isEmpty ? .gauge : parts
+        if drawn.allSatisfy({ width(of: $0, parts: parts) <= 0 }) {
+            parts.insert(.gauge)
+        }
 
         let widths = drawn.map { width(of: $0, parts: parts) }
         let total = widths.reduce(0, +) + segmentGap * CGFloat(drawn.count - 1)
