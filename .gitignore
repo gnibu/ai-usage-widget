@@ -6,3 +6,8 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+
+# Swift / SwiftPM
+.build/
+.swiftpm/
+*.app/

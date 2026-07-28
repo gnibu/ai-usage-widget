@@ -1,8 +1,8 @@
 # ai-usage-widget
 
-A macOS desktop widget showing how much of your **Claude Code** and **Codex**
-quota you have burned, and whether you are burning it faster than the window
-refills. Refreshes every 15 minutes.
+How much of your **Claude Code** and **Codex** quota you have burned, and
+whether you are burning it faster than the window refills. Refreshes every 15
+minutes.
 
 ```
 AI USAGE                          05:07
@@ -21,38 +21,82 @@ spark week  ▓───┃──────    1%  Mon 08:36
   orange up to 1.5× it, red beyond that or above 90% consumed.
 - **Right column** — when the window resets, as a wall-clock time.
 
-Drag the card anywhere; the position is remembered.
+Two front ends draw exactly that, from the same cache file:
 
-## Install
+| | [`macos/`](macos) — native app | [`python/`](python) — Übersicht widget |
+| --- | --- | --- |
+| Surface | menu bar ring + dropdown | card on the desktop |
+| Notifications | yes, on threshold and on pace | no |
+| Refresh | in-app timer | launchd agent |
+| Needs | nothing but macOS 14+ | Python 3.10+, Übersicht |
+| Build | `swift build` (Command Line Tools) | `pipx install` |
+
+They read and write the same `~/.local/share/ai-usage/usage.json`, so running
+both is fine — either one refreshing keeps the other current.
+
+## The native app
 
 ```sh
-pipx install git+https://github.com/gnibu/ai-usage-widget.git
+cd macos
+./build.sh --install
+```
+
+That compiles, wraps the binary in `AI Usage.app`, ad-hoc signs it, copies it to
+`/Applications` and launches it. A ring appears in the menu bar, tinted by the
+window in the most trouble and labelled with its percentage. Click it for the
+full card, a **Refresh** button and settings.
+
+Settings live behind the gear:
+
+- show the percentage next to the ring, or just the ring
+- open at login
+- notify past *n*% of a window (default 90%)
+- notify when burning faster than *n*× the even pace (default 1.5×)
+- refresh interval
+
+Each alert fires at most once per window; the moment a window resets, the slate
+is wiped and the next crossing is announced again.
+
+**Requirements:** macOS 14+, Command Line Tools (`xcode-select --install`).
+Full Xcode is *not* needed — there is no `.xcodeproj`, `build.sh` assembles the
+bundle by hand.
+
+**Ad-hoc signing.** The app is signed with an ad-hoc identity, which is enough
+for notifications and the login item but means the signature changes on every
+rebuild. macOS may re-ask for Keychain consent after a rebuild; that is expected.
+
+### No WidgetKit widget
+
+A real Notification Centre / desktop widget needs a WidgetKit app extension,
+which needs full Xcode to build and an Apple Developer team for the App Group
+the extension would read through. Until then the Übersicht widget below is the
+desktop-card option, and it works alongside the native app.
+
+## The Übersicht widget
+
+```sh
+pipx install "git+https://github.com/gnibu/ai-usage-widget.git#subdirectory=python"
 ai-usage install
 ```
 
 `ai-usage install` deploys the widget, registers the refresh launch agent, offers
 to `brew install --cask ubersicht` if needed, and does a first fetch. Übersicht's
 first launch shows a Gatekeeper prompt ("app downloaded from the Internet") —
-click **Open**.
+click **Open**. Drag the card anywhere; the position is remembered.
 
 From a checkout:
 
 ```sh
 git clone https://github.com/gnibu/ai-usage-widget.git
-cd ai-usage-widget
+cd ai-usage-widget/python
 pipx install .
 ai-usage install
 ```
 
-### Requirements
+If you have switched to the native app and want the desktop card gone, run
+`ai-usage uninstall` — the app keeps the cache current on its own.
 
-- macOS
-- Python 3.10+
-- [Übersicht](https://tracesof.net/uebersicht/) (the installer can fetch it)
-- Claude Code and/or Codex already logged in. Either can be missing — the widget
-  shows a per-provider error instead of failing.
-
-## Commands
+### Commands
 
 | Command | Does |
 | --- | --- |
@@ -71,17 +115,19 @@ launchctl kickstart gui/$(id -u)/io.github.ai-usage
 
 ## How it works
 
-Three pieces, deliberately split so the desktop widget never handles credentials:
+Everything hangs off one cache file, `~/.local/share/ai-usage/usage.json`
+(override the directory with `AI_USAGE_DIR`):
 
 | Piece | Lives at | Job |
 | --- | --- | --- |
-| `ai-usage fetch` | pipx venv, shim in `~/.local/bin` | reads tokens, calls both usage APIs, writes the cache |
+| `AI Usage.app` | `/Applications` | fetches on its own timer, draws the menu bar, posts notifications, writes the cache |
+| `ai-usage fetch` | pipx venv, shim in `~/.local/bin` | same fetch, from the shell |
 | `io.github.ai-usage.plist` | `~/Library/LaunchAgents/` | runs `ai-usage fetch --quiet` every 15 min (`StartInterval 900`, `RunAtLoad`) |
 | `ai-usage.jsx` | `~/Library/Application Support/Übersicht/widgets/` | `cat`s the cache every 2 min and draws it |
 
-The cache is `~/.local/share/ai-usage/usage.json` (override the directory with
-`AI_USAGE_DIR`). The widget re-reads it more often than the agent refetches, so
-the pace tick, colours and reset times stay accurate between fetches.
+The widget re-reads the cache more often than anything refetches, so the pace
+tick, colours and reset times stay accurate between fetches. `Fetcher.swift` is
+a direct port of `usage.py` and emits byte-identical JSON — keep them in step.
 
 ### Where the numbers come from
 
@@ -100,7 +146,7 @@ Which windows appear depends on what each API returns for your plan:
 - Codex reports a primary window, an optional secondary one, and any
   model-specific buckets from `additional_rate_limits` (e.g. GPT-5.3-Codex-Spark)
   as their own row. On Pro today only weekly windows come back — `secondary_window`
-  is `null`. If a 5-hour window reappears the widget renders it with no change.
+  is `null`. If a 5-hour window reappears both front ends render it with no change.
 
 ## Security
 
@@ -116,16 +162,17 @@ Worth understanding before running something that touches your API credentials.
   and plan names — nothing secret.
 - Read-only on both credential stores. It never writes or refreshes tokens, so
   it cannot invalidate either CLI's login.
-- Standard library only — zero dependencies, so there is no supply chain to
-  audit beyond `src/ai_usage_widget/`. Read it; it is short.
+- No dependencies on either side — Python standard library, Swift standard
+  frameworks. There is no supply chain to audit beyond this repo. Read it; it is
+  short.
 
 **Why the split matters**
 
 Übersicht widgets are arbitrary shell executed on a timer — that is the app's
 whole design. Rather than give a third-party app a path to your Keychain, the
 widget's entire command is `cat ~/.local/share/ai-usage/usage.json`. The
-privileged work happens in the launch agent, which runs as you. Übersicht never
-sees a token.
+privileged work happens in the launch agent (or the native app), which runs as
+you. Übersicht never sees a token.
 
 **What you are trusting**
 
@@ -139,6 +186,12 @@ sees a token.
 
 ## Troubleshooting
 
+**Menu bar ring missing**
+
+macOS hides status items when the bar runs out of room, and menu bar managers
+(Bartender, Ice, Hidden Bar) park them off-screen by default. Check the app is
+alive with `pgrep -fl "AI Usage"`, then look in your manager's hidden section.
+
 **Widget blank or stale**
 
 ```sh
@@ -147,8 +200,15 @@ launchctl kickstart gui/$(id -u)/io.github.ai-usage   # force a fetch
 cat ~/.local/share/ai-usage/error.log                 # agent stderr
 ```
 
-Then Refresh from Übersicht's menu bar icon. The widget header shows `(stale)`
-once the cache is more than 45 minutes old.
+Both front ends label a reading `(stale)` once the cache is more than 45 minutes
+old.
+
+**No notifications**
+
+The app asks for permission on first launch. If it was refused, re-enable it
+under System Settings → Notifications → AI Usage. Notifications need the app to
+be signed, which `build.sh` handles — running the raw `swift build` binary
+skips them on purpose.
 
 **`token expired — run claude` / `run codex`**
 
@@ -164,6 +224,9 @@ fetch already retries once; a later run generally succeeds.
 ## Uninstall
 
 ```sh
+osascript -e 'quit app "AI Usage"'
+rm -rf "/Applications/AI Usage.app"
+
 ai-usage uninstall --purge
 pipx uninstall ai-usage-widget
 brew uninstall --cask ubersicht   # optional
