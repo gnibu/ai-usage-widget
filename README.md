@@ -48,8 +48,10 @@ there is no `.xcodeproj`, `build.sh` assembles the bundle by hand.
 filled to its consumption and tinted by its pace, and the percentage. Any of the
 three can be switched off, and you can widen it to as many as four windows —
 every provider gets a slot before any provider gets a second one, so Codex stays
-visible even when Claude is the loud one. Click it for the full card, a
-**Refresh** button and settings.
+visible even when Claude is the loud one. The window's initial sits in the hole
+of the ring (`w` week, `h` 5-hour, `s` spark week), which is the one place a
+menu bar has room to spare. Click it for the full card, a **Refresh** button and
+settings.
 
 **Desktop card.** The same card, free-standing. Drag it anywhere; the position
 is remembered by its top left corner, so it stays put when a row appears. It

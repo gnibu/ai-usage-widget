@@ -95,6 +95,7 @@ final class UsageStore: ObservableObject {
         let segments = menuBarWindows(limit: preferences.menuBarSlots).map {
             StatusIcon.Segment(
                 provider: $0.provider.name,
+                window: $0.window.label,
                 percent: $0.window.percent,
                 color: Pace.color($0.window)
             )
@@ -104,6 +105,7 @@ final class UsageStore: ObservableObject {
         if preferences.showLogoInMenuBar { parts.insert(.mark) }
         if preferences.showGaugeInMenuBar { parts.insert(.gauge) }
         if preferences.showPercentInMenuBar { parts.insert(.percent) }
+        if preferences.showWindowInMenuBar { parts.insert(.window) }
 
         statusImage = StatusIcon.image(segments: segments, parts: parts)
     }

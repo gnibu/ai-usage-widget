@@ -15,6 +15,7 @@ enum RegressionTests {
         testExtraSlotsFallBackToTheNextWorstWindow()
         testShippedIconsParse()
         testArcFlagsAreReadOneCharacterWide()
+        testWindowInitialSkipsDigits()
         print("All regression tests passed")
     }
 
@@ -152,6 +153,15 @@ enum RegressionTests {
             abs(spaced.bounds.height - 5) < 0.01,
             "a semicircle of radius 5 must be 5 tall, got \(spaced.bounds.height)"
         )
+    }
+
+    private static func testWindowInitialSkipsDigits() {
+        // `5h` has to read as `h`; taking the very first character gives `5`,
+        // which says nothing about the window at all.
+        check(StatusIcon.windowInitial("5h") == "h", "5h must be marked h")
+        check(StatusIcon.windowInitial("week") == "w", "week must be marked w")
+        check(StatusIcon.windowInitial("spark week") == "s", "spark week must be marked s")
+        check(StatusIcon.windowInitial("30") == nil, "a label with no letters gets no mark")
     }
 
     // ----------------------------------------------------------------- //

@@ -12,6 +12,8 @@ enum StatusIcon {
     struct Segment {
         /// Names the provider, so the mark can be looked up.
         var provider: String
+        /// The window's own label, of which only the first letter is drawn.
+        var window: String = ""
         var percent: Double?
         var color: Color
     }
@@ -24,8 +26,11 @@ enum StatusIcon {
         static let mark = Parts(rawValue: 1 << 0)
         static let gauge = Parts(rawValue: 1 << 1)
         static let percent = Parts(rawValue: 1 << 2)
+        /// Rides inside the gauge, so it costs no width and means nothing
+        /// without it.
+        static let window = Parts(rawValue: 1 << 3)
 
-        static let all: Parts = [.mark, .gauge, .percent]
+        static let all: Parts = [.mark, .gauge, .percent, .window]
     }
 
     private static let height: CGFloat = 18
@@ -43,6 +48,12 @@ enum StatusIcon {
     private static let monogramAttributes: [NSAttributedString.Key: Any] = [
         .font: NSFont.systemFont(ofSize: 10, weight: .semibold),
         .foregroundColor: NSColor.labelColor,
+    ]
+
+    /// Sized to clear the ring's stroke on both sides at any scale factor.
+    private static let windowAttributes: [NSAttributedString.Key: Any] = [
+        .font: NSFont.systemFont(ofSize: 8, weight: .semibold),
+        .foregroundColor: NSColor.labelColor.withAlphaComponent(0.75),
     ]
 
     static func image(segments: [Segment], parts: Parts = .all) -> NSImage {
@@ -104,6 +115,9 @@ enum StatusIcon {
         if parts.contains(.gauge) {
             space()
             drawRing(percent: segment.percent, color: segment.color, atX: x)
+            if parts.contains(.window) {
+                drawWindowInitial(segment.window, atX: x)
+            }
             x += ring
         }
 
@@ -132,6 +146,25 @@ enum StatusIcon {
         initial.draw(
             at: NSPoint(x: x + (mark - size.width) / 2, y: (height - size.height) / 2),
             withAttributes: monogramAttributes
+        )
+    }
+
+    /// One letter in the hole of the ring, which is the only space a menu bar
+    /// item has going spare: `5h` and `week` are otherwise indistinguishable
+    /// once both of a provider's windows are on show. Digits are skipped so
+    /// that `5h` reads as `h` rather than as `5`.
+    static func windowInitial(_ window: String) -> String? {
+        guard let initial = window.first(where: \.isLetter) else { return nil }
+        return String(initial).lowercased()
+    }
+
+    private static func drawWindowInitial(_ window: String, atX x: CGFloat) {
+        guard let initial = windowInitial(window) else { return }
+        let text = initial as NSString
+        let size = text.size(withAttributes: windowAttributes)
+        text.draw(
+            at: NSPoint(x: x + (ring - size.width) / 2, y: (height - size.height) / 2),
+            withAttributes: windowAttributes
         )
     }
 

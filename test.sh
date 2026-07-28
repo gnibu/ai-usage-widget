@@ -11,6 +11,7 @@ swiftc -parse-as-library \
     Sources/AIUsage/Pace.swift \
     Sources/AIUsage/Fetcher.swift \
     Sources/AIUsage/BrandGlyph.swift \
+    Sources/AIUsage/StatusIcon.swift \
     Tests/RegressionTests.swift \
     -o "$TEST_BINARY"
 

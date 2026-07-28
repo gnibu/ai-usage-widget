@@ -70,6 +70,14 @@ private struct SettingsView: View {
                 partToggle("Percent", isOn: $preferences.showPercentInMenuBar)
             }
 
+            // Rides inside the gauge rather than beside it, so it widens
+            // nothing — and has nowhere to go once the gauge is off.
+            Toggle("Mark the window inside the gauge (w, h)", isOn: $preferences.showWindowInMenuBar)
+                .disabled(!preferences.showGaugeInMenuBar)
+                .onChange(of: preferences.showWindowInMenuBar) { _, _ in
+                    store.iconPreferenceChanged()
+                }
+
             Stepper(value: $preferences.menuBarSlots, in: 1...4) {
                 Text(preferences.menuBarSlots == 1
                     ? "Show the busiest window"
