@@ -296,6 +296,8 @@ private struct SettingsTab: View {
             GlassSlider(
                 value: slider,
                 range: range,
+                accessibilityLabel: title,
+                accessibilityValue: value,
                 step: step,
                 colors: colors,
                 enabled: isOn.wrappedValue

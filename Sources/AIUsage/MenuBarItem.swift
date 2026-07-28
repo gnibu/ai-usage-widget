@@ -19,6 +19,7 @@ final class MenuBarItem {
     private var panel: NSPanel?
     private var watches: Set<AnyCancellable> = []
     private var monitors: [Any] = []
+    private var activationObserver: NSObjectProtocol?
 
     /// Clear of the menu bar, and clear of the shadow the panel casts upwards.
     private let dropGap: CGFloat = 6
@@ -83,8 +84,21 @@ final class MenuBarItem {
 
         panel.makeKeyAndOrderFront(nil)
 
-        // A menu closes when you click away from it. `resignKey` alone does not
-        // cover a click on our own desktop card, which never takes key.
+        // A nonactivating panel leaves whichever app was already frontmost in
+        // that state. Close when another app becomes frontmost, which covers a
+        // keyboard app switch without interfering with the status item's own
+        // click-to-toggle action.
+        activationObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.close() }
+        }
+
+        // A menu also closes when you click away from it. The activation
+        // observer alone does not cover a click on our own desktop card, which
+        // never takes key.
         monitors = [
             NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
                 MainActor.assumeIsolated { self?.close() }
@@ -106,6 +120,10 @@ final class MenuBarItem {
     }
 
     private func close() {
+        if let activationObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(activationObserver)
+            self.activationObserver = nil
+        }
         monitors.forEach(NSEvent.removeMonitor)
         monitors = []
         panel?.orderOut(nil)

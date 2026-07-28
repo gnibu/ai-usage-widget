@@ -319,6 +319,8 @@ struct GlassSegmented<Value: Hashable>: View {
 struct GlassSlider: View {
     @Binding var value: Double
     let range: ClosedRange<Double>
+    let accessibilityLabel: String
+    let accessibilityValue: String
     var step: Double = 1
     var colors: [Color] = [Pace.warn, Pace.bad]
     var enabled: Bool = true
@@ -361,6 +363,35 @@ struct GlassSlider: View {
         }
         .frame(height: knob)
         .opacity(enabled ? 1 : 0.45)
+        .focusable(enabled)
+        .onKeyPress(keys: [.leftArrow, .downArrow, .rightArrow, .upArrow]) { press in
+            switch press.key {
+            case .leftArrow, .downArrow:
+                adjust(by: -1)
+            case .rightArrow, .upArrow:
+                adjust(by: 1)
+            default:
+                return .ignored
+            }
+            return .handled
+        }
+        .disabled(!enabled)
+        // Keep the glass control on screen, but let assistive technologies
+        // operate the native slider semantics they already understand.
+        .accessibilityRepresentation {
+            Slider(value: $value, in: range, step: step) {
+                Text(accessibilityLabel)
+            }
+            .accessibilityValue(accessibilityValue)
+            .disabled(!enabled)
+        }
+    }
+
+    private func adjust(by steps: Double) {
+        guard enabled else { return }
+        let raw = value + steps * step
+        let snapped = (raw / step).rounded() * step
+        value = min(range.upperBound, max(range.lowerBound, snapped))
     }
 }
 
