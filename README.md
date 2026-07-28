@@ -26,7 +26,7 @@ Drag the card anywhere; the position is remembered.
 ## Install
 
 ```sh
-pipx install git+https://github.com/<you>/ai-usage-widget.git
+pipx install git+https://github.com/gnibu/ai-usage-widget.git
 ai-usage install
 ```
 
@@ -38,7 +38,7 @@ click **Open**.
 From a checkout:
 
 ```sh
-git clone https://github.com/<you>/ai-usage-widget.git
+git clone https://github.com/gnibu/ai-usage-widget.git
 cd ai-usage-widget
 pipx install .
 ai-usage install
