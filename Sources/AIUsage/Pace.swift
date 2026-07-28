@@ -57,6 +57,14 @@ enum Pace {
         return window.percent / elapsed
     }
 
+    /// The same reading as a percentage, which is how the summary states it:
+    /// spending measured against the even-burn mark on the track rather than
+    /// against the whole budget. 100 sits exactly on the mark, 150 is half
+    /// again past it. Nil while the mark is still too early to mean anything.
+    static func paceIndex(_ window: UsageWindow, now: Date = Date()) -> Double? {
+        ratio(window, now: now).map { $0 * 100 }
+    }
+
     /// Green while spending is at or under the even-burn pace, orange when
     /// running ahead of it, red when far ahead or nearly exhausted.
     static func color(_ window: UsageWindow, now: Date = Date()) -> Color {
@@ -123,6 +131,13 @@ enum Pace {
         let line: String
         let detail: String
         let percent: Double
+        /// Share of the window elapsed, for the ring's even-burn mark.
+        let elapsed: Double?
+        /// "Anthropic 5h" — the row the whole summary is speaking about, named
+        /// so that the ring is not an anonymous number.
+        let source: String?
+        /// Identifies that row in the list below, so it can be marked there too.
+        let rowKey: String?
         let color: Color
         /// True once the reading is bad enough that the whole card goes red.
         let hot: Bool
@@ -135,6 +150,9 @@ enum Pace {
                 line: "No reading yet",
                 detail: "nothing fetched",
                 percent: 0,
+                elapsed: nil,
+                source: nil,
+                rowKey: nil,
                 color: good,
                 hot: false
             )
@@ -142,27 +160,39 @@ enum Pace {
 
         let window = worst.window
         let tier = severityTier(window, now: now)
-        let percent = Int(window.percent.rounded())
-        let burn = burnPhrase(window, now: now)
         let exhausted = tier == 2 && window.percent >= 90
+        let reading = readingPhrase(window, now: now)
 
         let short: String
         switch tier {
-        case 2: short = burn ?? "Well ahead of pace"
-        case 1: short = burn ?? "Ahead of pace"
+        case 2: short = "Well ahead of pace"
+        case 1: short = "Ahead of pace"
         default: short = "On pace"
         }
 
         return Verdict(
             headline: exhausted ? "\(window.label) window nearly out" : (tier == 0 ? "On pace everywhere" : short),
             line: exhausted
-                ? [burn, "\(window.label) window nearly out"].compactMap { $0 }.joined(separator: " — ")
-                : "\(short) — \(percent)% of \(phrase(window.label))",
-            detail: "worst: \(worst.provider.name) \(window.label), \(percent)%",
+                ? "\(window.label) window nearly out — \(reading)"
+                : "\(short) — \(reading)",
+            detail: "worst: \(worst.provider.name) \(window.label), \(reading)",
             percent: window.percent,
+            elapsed: elapsedPercent(window, now: now),
+            source: "\(worst.provider.name) \(window.label)",
+            rowKey: Report.rowKey(provider: worst.provider, window: window),
             color: color(window, now: now),
             hot: tier == 2
         )
+    }
+
+    /// The number the summary quotes. Against the even-burn mark once there is
+    /// one, since "63% of the week" says nothing about whether that is early or
+    /// late; against the budget only while the window is too young for a mark.
+    private static func readingPhrase(_ window: UsageWindow, now: Date) -> String {
+        if let index = paceIndex(window, now: now) {
+            return "\(Int(index.rounded()))% of pace"
+        }
+        return "\(Int(window.percent.rounded()))% of \(phrase(window.label))"
     }
 
     /// Window labels are a mix of periods and durations: "the week" reads, but
@@ -170,13 +200,6 @@ enum Pace {
     private static func phrase(_ label: String) -> String {
         let period = ["week", "day", "month", "hour", "session"].contains { label.contains($0) }
         return period ? "the \(label)" : "the \(label) window"
-    }
-
-    /// "Burning 2.1× pace" — only once the window has run long enough for the
-    /// ratio to mean anything, otherwise the phrase would be invented.
-    private static func burnPhrase(_ window: UsageWindow, now: Date) -> String? {
-        guard let ratio = ratio(window, now: now), ratio > 1 else { return nil }
-        return String(format: "Burning %.1f× pace", ratio)
     }
 
     /// The word beside a provider's name: how that provider on its own is doing.

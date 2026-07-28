@@ -44,7 +44,7 @@ struct DesktopUsageCard: View {
 
             if let report = store.report {
                 ForEach(report.providers) { provider in
-                    ProviderBlock(provider: provider, metrics: .card)
+                    ProviderBlock(provider: provider, metrics: .card, worstRow: verdict.rowKey)
                 }
             } else {
                 Text(store.isRefreshing ? "fetching…" : "no data yet")
@@ -56,10 +56,15 @@ struct DesktopUsageCard: View {
 
     private func header(_ verdict: Pace.Verdict) -> some View {
         HStack(spacing: 14) {
-            PaceRing(percent: verdict.percent, color: verdict.color, size: 40)
+            PaceRing(
+                percent: verdict.percent,
+                color: verdict.color,
+                elapsed: verdict.elapsed,
+                size: 40
+            )
 
             VStack(alignment: .leading, spacing: 2) {
-                Text("AI USAGE")
+                Text(verdict.source.map { "WORST — \($0.uppercased())" } ?? "AI USAGE")
                     .font(.system(size: 11, weight: .regular))
                     .kerning(1.4)
                     .foregroundStyle(Glass.ink(0.5))
@@ -101,7 +106,12 @@ struct MenuUsageView: View {
             if let report = store.report {
                 VStack(alignment: .leading, spacing: 11) {
                     ForEach(report.providers) { provider in
-                        ProviderBlock(provider: provider, metrics: .menu, showsNote: false)
+                        ProviderBlock(
+                            provider: provider,
+                            metrics: .menu,
+                            showsNote: false,
+                            worstRow: verdict.rowKey
+                        )
                     }
                 }
             } else {
@@ -114,7 +124,12 @@ struct MenuUsageView: View {
 
     private func summary(_ verdict: Pace.Verdict) -> some View {
         HStack(spacing: 12) {
-            PaceRing(percent: verdict.percent, color: verdict.color, size: 36)
+            PaceRing(
+                percent: verdict.percent,
+                color: verdict.color,
+                elapsed: verdict.elapsed,
+                size: 36
+            )
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(verdict.headline)
@@ -146,6 +161,9 @@ struct ProviderBlock: View {
     let provider: Provider
     let metrics: RowMetrics
     var showsNote: Bool = true
+    /// The row the summary above is speaking for, marked here so the reader can
+    /// trace the ring back to the window it came from.
+    var worstRow: String? = nil
 
     var body: some View {
         let note = Pace.note(provider)
@@ -171,7 +189,11 @@ struct ProviderBlock: View {
 
             if provider.ok {
                 ForEach(provider.windows) { window in
-                    UsageRow(window: window, metrics: metrics)
+                    UsageRow(
+                        window: window,
+                        metrics: metrics,
+                        isWorst: worstRow == Report.rowKey(provider: provider, window: window)
+                    )
                 }
             } else {
                 Text(provider.error ?? "unavailable")
@@ -205,13 +227,22 @@ struct ProviderBlock: View {
 struct UsageRow: View {
     let window: UsageWindow
     let metrics: RowMetrics
+    var isWorst: Bool = false
 
     var body: some View {
         HStack(spacing: metrics.gap) {
-            Text(window.label)
-                .font(.system(size: metrics.labelSize))
-                .foregroundStyle(Glass.ink(0.6))
-                .frame(width: metrics.label, alignment: .leading)
+            // The dot sits in a gutter every row pays for, so marking a row
+            // moves nothing.
+            HStack(spacing: 5) {
+                Circle()
+                    .fill(isWorst ? Pace.color(window) : .clear)
+                    .frame(width: 4, height: 4)
+
+                Text(window.label)
+                    .font(.system(size: metrics.labelSize, weight: isWorst ? .semibold : .regular))
+                    .foregroundStyle(Glass.ink(isWorst ? 0.95 : 0.6))
+            }
+            .frame(width: metrics.label, alignment: .leading)
 
             UsageTrack(
                 percent: window.percent,

@@ -128,7 +128,11 @@ struct Report: Codable, Equatable {
 
     /// Provider and window labels are each unique within a reading, but only
     /// together do they identify one row.
+    static func rowKey(provider: Provider, window: UsageWindow) -> String {
+        provider.name + "\u{1}" + window.label
+    }
+
     private static func key(_ pair: (provider: Provider, window: UsageWindow)) -> String {
-        pair.provider.name + "\u{1}" + pair.window.label
+        rowKey(provider: pair.provider, window: pair.window)
     }
 }

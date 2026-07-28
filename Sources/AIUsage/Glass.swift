@@ -143,10 +143,13 @@ struct UsageTrack: View {
     }
 }
 
-/// The donut in the summary line: one glance at the worst window.
+/// The donut in the summary line: one glance at the worst window. Carries the
+/// same even-burn mark as the tracks, so "how much is gone" and "how far into
+/// the window we are" are read off one shape.
 struct PaceRing: View {
     let percent: Double
     let color: Color
+    var elapsed: Double? = nil
     var size: CGFloat = 40
 
     var body: some View {
@@ -158,6 +161,15 @@ struct PaceRing: View {
                 .trim(from: 0, to: min(1, max(0.005, percent / 100)))
                 .stroke(color, style: StrokeStyle(lineWidth: line, lineCap: .round))
                 .rotationEffect(.degrees(-90))
+
+            if let elapsed, elapsed > 0 {
+                Capsule()
+                    .fill(Color.white.opacity(0.85))
+                    .frame(width: 2, height: line + 5)
+                    .shadow(color: .black.opacity(0.4), radius: 2)
+                    .offset(y: -(size - line) / 2)
+                    .rotationEffect(.degrees(min(100, elapsed) / 100 * 360))
+            }
         }
         .frame(width: size, height: size)
     }
