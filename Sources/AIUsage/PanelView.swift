@@ -33,8 +33,7 @@ struct PanelView: View {
         // The same pane as the desktop card, which is what the design draws —
         // the dropdown had been getting a bare rectangle, so it was missing the
         // border and the lit top edge that make glass read as thick.
-        .glassPane(radius: Glass.panelRadius, falloff: 0.033, tone: 1, shadow: false)
-        .background(MenuWindowBackdrop())
+        .glassPane(radius: Glass.panelRadius, falloff: 0.033, tone: 1, border: 0.3, shadow: false)
         .environment(\.colorScheme, .dark)
         .onAppear { store.refreshIfStale(olderThan: 300) }
     }
@@ -77,53 +76,6 @@ struct PanelView: View {
 }
 
 // --------------------------------------------------------------------- //
-
-/// Takes the menu bar window's own vibrant backdrop out of the way.
-///
-/// `MenuBarExtra(.window)` hands us a panel that already draws a material.
-/// Drawing our pane over it put two blurs in series, which is why the dropdown
-/// looked washed out beside the desktop card: a blur greys out what it samples,
-/// and doing it twice leaves the sheen nothing to lift. The design has one
-/// `backdrop-filter` per pane, so ours becomes the only one.
-///
-/// Best effort on purpose. An effect view that turns out to be an ancestor of
-/// our own content is left alone, so the worst case is the panel we already had
-/// rather than an invisible one.
-private struct MenuWindowBackdrop: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSView {
-        let probe = NSView(frame: .zero)
-        // The view has no window until it is in the hierarchy, which is a
-        // runloop turn away from being made.
-        DispatchQueue.main.async { Self.clear(probe.window) }
-        return probe
-    }
-
-    func updateNSView(_ view: NSView, context: Context) {
-        DispatchQueue.main.async { Self.clear(view.window) }
-    }
-
-    private static func clear(_ window: NSWindow?) {
-        guard let window, let root = window.contentView else { return }
-        window.backgroundColor = .clear
-        window.isOpaque = false
-        hide(in: root)
-    }
-
-    private static func hide(in view: NSView) {
-        if let backdrop = view as? NSVisualEffectView {
-            if !holdsContent(backdrop) { backdrop.isHidden = true }
-            return
-        }
-        view.subviews.forEach(hide)
-    }
-
-    /// SwiftUI's hosting view is internal, so it is recognised by name. A miss
-    /// only means we leave a backdrop in place.
-    private static func holdsContent(_ view: NSView) -> Bool {
-        if String(describing: type(of: view)).contains("HostingView") { return true }
-        return view.subviews.contains(where: holdsContent)
-    }
-}
 
 // --------------------------------------------------------------------- //
 

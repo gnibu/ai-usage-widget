@@ -24,11 +24,21 @@ enum Glass {
         )
     }
 
-    /// `inset 0 1px 0 rgba(255,255,255,0.4)`: a lit top edge that falls away
-    /// down the sides, which is what makes the pane read as thick.
-    static func rim(top: Double = 0.4, bottom: Double = 0.1, tint: Color = .white) -> LinearGradient {
+    /// The border and the lit top edge in one stroke.
+    ///
+    /// The design keeps them separate — `border: 1px rgba(255,255,255,0.2)` all
+    /// the way round, and `inset 0 1px 0 rgba(255,255,255,0.4)` only along the
+    /// top. Running a single gradient from 0.4 down to 0.08 instead spread the
+    /// bright end across the whole upper half: the left border measured 184
+    /// where the design measures 85. So the bright stop now ends within the
+    /// first few percent of the height and the rest holds at `base`.
+    static func rim(top: Double = 0.35, base: Double = 0.2, tint: Color = .white) -> LinearGradient {
         LinearGradient(
-            colors: [tint.opacity(top), tint.opacity(bottom)],
+            stops: [
+                .init(color: tint.opacity(top), location: 0),
+                .init(color: tint.opacity(base), location: 0.05),
+                .init(color: tint.opacity(base), location: 1),
+            ],
             startPoint: .top,
             endPoint: .bottom
         )
@@ -72,29 +82,29 @@ enum Glass {
 extension View {
     /// A whole pane of glass — the desktop card and the dropdown.
     ///
-    /// `tint` colours the sheen and the border together, which is how the hot
-    /// state is expressed: the same card, lit red from inside.
-    /// `saturation` is the design's `backdrop-filter: saturate(180%)`: the blur
-    /// alone greys out whatever is behind the pane, and putting the colour back
-    /// is most of what makes it read as glass rather than as fog.
-    /// `lift` scales the sheen. The design's pane has no dark layer under it at
-    /// all — blur, saturate, then a white gradient — so the gradient lands on a
-    /// lit backdrop and the pane comes out light. SwiftUI's material in the
-    /// dark appearance is itself a dark translucency, so the same gradient
-    /// lands on slate and the pane goes flat. Rendering the blur light instead
-    /// overshoots badly: the pane turns milky and white text stops reading.
-    /// Lifting the gradient closes the gap from the other side.
-    /// `lift` scales the head of the sheen and `falloff` its tail, because the
-    /// two ends wanted different answers: measured against the design, the pane
-    /// was right at the top left with the sheen at full strength and right at
-    /// the bottom right with it at a third of that. Scaling both together could
-    /// only ever satisfy one end.
+    /// The knobs exist because the two surfaces sit in different windows, and
+    /// the same values do not come out the same on both.
+    ///
+    /// - `tint` colours the sheen and the rim together, which is how the hot
+    ///   state is expressed: the same card, lit red from inside.
+    /// - `lift` scales the head of the sheen and `falloff` its tail. Measured
+    ///   against the design, the pane wanted full strength at the top left and
+    ///   a third of it at the bottom right, so scaling both together could only
+    ///   ever satisfy one end.
+    /// - `tone` puts back the colour the blur loses; see `Glass.tone`.
+    /// - `border` scales the rim. The menu bar window draws a hairline of its
+    ///   own that nothing in its hierarchy accounts for — the frame view is
+    ///   empty and transparent, yet its edge measures 180 where the pane
+    ///   measures 50, while the desktop card's edge measures 145 against a
+    ///   predicted 144. Ours was landing on top of the system's and reading as
+    ///   a white outline, so the dropdown asks for a fraction of it.
     func glassPane(
         radius: CGFloat,
         tint: Color? = nil,
         lift: Double = 1,
         falloff: Double = 0.06,
         tone: Double = 0,
+        border: Double = 1,
         shadow: Bool = true
     ) -> some View {
         let sheen = Glass.sheen(
@@ -102,7 +112,12 @@ extension View {
             top: (tint == nil ? 0.18 : 0.20) * lift,
             bottom: falloff
         )
-        let border = Glass.rim(top: tint == nil ? 0.4 : 0.34, bottom: 0.08, tint: tint ?? .white)
+        // The hot state borrows the design's red border, `rgba(255,140,140,0.34)`.
+        let rim = Glass.rim(
+            top: (tint == nil ? 0.35 : 0.36) * border,
+            base: (tint == nil ? 0.2 : 0.34) * border,
+            tint: tint ?? .white
+        )
         let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
 
         return background {
@@ -115,7 +130,7 @@ extension View {
         }
         .overlay(
             RoundedRectangle(cornerRadius: radius, style: .continuous)
-                .strokeBorder(border, lineWidth: 1)
+                .strokeBorder(rim, lineWidth: 1)
         )
         .shadow(color: .black.opacity(shadow ? 0.45 : 0), radius: 28, y: 14)
         .environment(\.colorScheme, .dark)
