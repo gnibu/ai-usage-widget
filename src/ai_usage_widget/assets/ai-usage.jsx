@@ -5,6 +5,9 @@
 // so Übersicht never touches credentials.
 //
 // Drag the card anywhere on the desktop; the position is remembered.
+// Right-click for a refresh / quit menu.
+
+import { run } from "uebersicht";
 
 export const command = "cat $HOME/.local/share/ai-usage/usage.json";
 
@@ -113,9 +116,103 @@ export const className = `
     flex: none;
   }
   .err { font-size: 10px; color: #ff8a80; }
+
+  .menu {
+    position: absolute;
+    min-width: 132px;
+    padding: 4px;
+    background: rgba(40, 40, 46, 0.96);
+    backdrop-filter: blur(24px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+    z-index: 10;
+  }
+  .menu-item {
+    padding: 5px 10px;
+    border-radius: 5px;
+    font-size: 11px;
+    color: #e8e8ed;
+    cursor: default;
+    white-space: nowrap;
+  }
+  .menu-item:hover { background: rgba(255, 255, 255, 0.12); }
+  .menu-item.busy { color: rgba(232, 232, 237, 0.45); }
 `;
 
 const POSITION_KEY = "ai-usage-position";
+const MENU_ID = "ai-usage-menu";
+
+const WIDGET_ID = "ai-usage-jsx";
+const REFRESH_CMD =
+  `launchctl kickstart -k gui/$(id -u)/io.github.ai-usage` +
+  ` && osascript -e 'tell application "Übersicht" to refresh widget id "${WIDGET_ID}"'`;
+const QUIT_CMD = `osascript -e 'tell application "Übersicht" to quit'`;
+
+function closeMenu() {
+  const menu = document.getElementById(MENU_ID);
+  if (menu) menu.remove();
+  document.removeEventListener("mousedown", onOutsideClick, true);
+  document.removeEventListener("keydown", onEscape, true);
+}
+
+function onOutsideClick(event) {
+  const menu = document.getElementById(MENU_ID);
+  if (menu && !menu.contains(event.target)) closeMenu();
+}
+
+function onEscape(event) {
+  if (event.key === "Escape") closeMenu();
+}
+
+// Built imperatively rather than through render(), which Übersicht re-runs on
+// every refresh and would tear an open menu down mid-click.
+const openMenu = (event) => {
+  const wrapper = event.currentTarget.parentElement;
+  if (!wrapper) return;
+  event.preventDefault();
+  closeMenu();
+
+  const rect = wrapper.getBoundingClientRect();
+  const menu = document.createElement("div");
+  menu.id = MENU_ID;
+  menu.className = "menu";
+  menu.style.left = `${event.clientX - rect.left}px`;
+  menu.style.top = `${event.clientY - rect.top}px`;
+
+  const items = [
+    {
+      label: "Refresh now",
+      busyLabel: "Refreshing…",
+      // The agent rewrites the cache, then Übersicht re-reads it.
+      command: REFRESH_CMD,
+      keepOpen: true,
+    },
+    { label: "Quit Übersicht", command: QUIT_CMD },
+  ];
+
+  items.forEach((item) => {
+    const el = document.createElement("div");
+    el.className = "menu-item";
+    el.textContent = item.label;
+    el.addEventListener("mousedown", (e) => {
+      e.stopPropagation();
+      if (!item.keepOpen) {
+        closeMenu();
+        run(item.command);
+        return;
+      }
+      el.textContent = item.busyLabel;
+      el.classList.add("busy");
+      run(item.command).then(closeMenu, closeMenu);
+    });
+    menu.appendChild(el);
+  });
+
+  wrapper.appendChild(menu);
+  document.addEventListener("mousedown", onOutsideClick, true);
+  document.addEventListener("keydown", onEscape, true);
+};
 
 // Übersicht owns the positioned wrapper element, so dragging means moving the
 // widget's parent node and persisting the offset in the WebView's localStorage.
@@ -281,7 +378,7 @@ export const render = ({ output, error }) => {
   }
 
   return (
-    <div ref={restorePosition} onMouseDown={startDrag}>
+    <div ref={restorePosition} onMouseDown={startDrag} onContextMenu={openMenu}>
       {body}
     </div>
   );
