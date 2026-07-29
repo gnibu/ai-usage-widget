@@ -40,8 +40,23 @@ struct Provider: Codable, Identifiable, Equatable {
     var plan: String?
     var error: String?
     var windows: [UsageWindow] = []
+    /// True when `windows` is the last reading that did land rather than one
+    /// taken now: the poll failed and these numbers were carried over.
+    var stale: Bool = false
+    /// When those carried numbers were actually measured.
+    var measuredAt: Int?
 
     var id: String { name }
+
+    enum CodingKeys: String, CodingKey {
+        case name
+        case ok
+        case plan
+        case error
+        case windows
+        case stale
+        case measuredAt = "measured_at"
+    }
 
     init(name: String) {
         self.name = name
@@ -54,6 +69,8 @@ struct Provider: Codable, Identifiable, Equatable {
         plan = try? box.decodeIfPresent(String.self, forKey: .plan)
         error = try? box.decodeIfPresent(String.self, forKey: .error)
         windows = (try? box.decode([UsageWindow].self, forKey: .windows)) ?? []
+        stale = (try? box.decode(Bool.self, forKey: .stale)) ?? false
+        measuredAt = try? box.decodeIfPresent(Int.self, forKey: .measuredAt)
     }
 }
 
@@ -81,6 +98,39 @@ struct Report: Codable, Equatable {
         updatedAt = (try? box.decode(Int.self, forKey: .updatedAt)) ?? 0
         updatedLabel = (try? box.decode(String.self, forKey: .updatedLabel)) ?? "--:--"
         providers = (try? box.decode([Provider].self, forKey: .providers)) ?? []
+    }
+
+    /// A provider that failed this round keeps the numbers it last reported,
+    /// marked stale, instead of the card blanking out. Most failures are one
+    /// bad poll — an access token the CLI has not refreshed yet, or the API not
+    /// answering — and the previous reading stays the best answer to "am I
+    /// fine?" for the few minutes until the next try.
+    ///
+    /// Only for a while: past `carryLimit` the quota windows have moved on and
+    /// the old numbers would be a lie rather than an approximation.
+    static let carryLimit: TimeInterval = 3 * 3600
+
+    func carryingOver(from previous: Report?, now: Date = Date()) -> Report {
+        guard let previous else { return self }
+        var merged = self
+        merged.providers = providers.map { provider in
+            guard !provider.ok,
+                  let old = previous.providers.first(where: { $0.name == provider.name }),
+                  old.ok
+            else { return provider }
+
+            let measured = (old.stale ? old.measuredAt : previous.updatedAt) ?? previous.updatedAt
+            guard now.timeIntervalSince1970 - Double(measured) < Self.carryLimit else { return provider }
+
+            var carried = provider
+            carried.ok = true
+            carried.stale = true
+            carried.plan = provider.plan ?? old.plan
+            carried.windows = old.windows
+            carried.measuredAt = measured
+            return carried
+        }
+        return merged
     }
 
     /// A reading older than this is shown as stale rather than silently trusted.

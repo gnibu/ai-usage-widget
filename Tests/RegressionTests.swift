@@ -19,6 +19,8 @@ enum RegressionTests {
         testWindowInitialSkipsDigits()
         testMenuBarItemIsNeverZeroWidth()
         testStrayArgumentAfterCloseIsRejected()
+        testFailedPollKeepsTheLastReading()
+        testCarriedReadingIsDroppedOnceItIsOld()
         print("All regression tests passed")
     }
 
@@ -195,6 +197,38 @@ enum RegressionTests {
         check(StatusIcon.windowInitial("week") == "w", "week must be marked w")
         check(StatusIcon.windowInitial("spark week") == "s", "spark week must be marked s")
         check(StatusIcon.windowInitial("30") == nil, "a label with no letters gets no mark")
+    }
+
+    private static func testFailedPollKeepsTheLastReading() {
+        let good = Report(
+            providers: [provider(name: "Claude", windows: [window(percent: 40, elapsedPercent: 50)])],
+            date: now
+        )
+        var failed = Provider(name: "Claude")
+        failed.error = "stored token went stale — run claude once to refresh it"
+        let merged = Report(providers: [failed], date: now.addingTimeInterval(900))
+            .carryingOver(from: good, now: now.addingTimeInterval(900))
+
+        let carried = merged.providers[0]
+        check(carried.ok, "a one-off failed poll must not blank the provider out")
+        check(carried.stale, "the carried reading must be marked stale")
+        check(carried.windows.count == 1, "the last reading's rows must survive")
+        check(carried.error != nil, "the reason for the failed poll must still be said")
+        check(carried.measuredAt == good.updatedAt, "the carried rows must say when they were measured")
+    }
+
+    private static func testCarriedReadingIsDroppedOnceItIsOld() {
+        let good = Report(
+            providers: [provider(name: "Claude", windows: [window(percent: 40, elapsedPercent: 50)])],
+            date: now
+        )
+        let later = now.addingTimeInterval(Report.carryLimit + 60)
+        var failed = Provider(name: "Claude")
+        failed.error = "the service is not answering (http 503)"
+        let merged = Report(providers: [failed], date: later).carryingOver(from: good, now: later)
+
+        check(!merged.providers[0].ok, "a reading older than the carry limit must not be shown as usable")
+        check(merged.providers[0].windows.isEmpty, "stale-beyond-limit rows must be dropped")
     }
 
     // ----------------------------------------------------------------- //

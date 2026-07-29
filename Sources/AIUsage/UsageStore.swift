@@ -66,11 +66,11 @@ final class UsageStore: ObservableObject {
         isRefreshing = true
         defer { isRefreshing = false }
 
-        let fresh = await Fetcher.fetchAll()
-        report = fresh
-        write(fresh)
+        let merged = (await Fetcher.fetchAll()).carryingOver(from: report)
+        report = merged
+        write(merged)
         redrawIcon()
-        Notifier.evaluate(fresh)
+        Notifier.evaluate(merged)
     }
 
     func refreshIfStale(olderThan seconds: TimeInterval) {

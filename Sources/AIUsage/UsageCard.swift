@@ -45,6 +45,8 @@ struct DesktopUsageCard: View {
         VStack(alignment: .leading, spacing: 18) {
             header(verdict)
 
+            OutageNotice(report: store.report, size: 12)
+
             Glass.hairline
 
             if let report = store.report {
@@ -108,6 +110,8 @@ struct MenuUsageView: View {
         VStack(alignment: .leading, spacing: 16) {
             summary(verdict)
 
+            OutageNotice(report: store.report, size: 11)
+
             if let report = store.report {
                 VStack(alignment: .leading, spacing: 11) {
                     ForEach(report.providers) { provider in
@@ -162,6 +166,45 @@ struct MenuUsageView: View {
 
 // --------------------------------------------------------------------- //
 
+/// Why a provider has no reading, said once for the whole card and in amber
+/// rather than red: a missed poll is a gap in what we know, not a warning about
+/// spending, and the rows below still say everything we do know.
+struct OutageNotice: View {
+    let report: Report?
+    let size: CGFloat
+
+    var body: some View {
+        let down = (report?.providers ?? []).filter { !$0.ok || $0.stale }
+
+        if !down.isEmpty {
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(down) { provider in
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Image(systemName: "exclamationmark.circle")
+                            .font(.system(size: size))
+                        Text(Self.line(provider))
+                            .font(.system(size: size))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+            .foregroundStyle(Pace.warn.opacity(0.92))
+        }
+    }
+
+    /// A stale provider still has rows below, so the notice has to say which
+    /// reading those rows are — otherwise the numbers look current.
+    static func line(_ provider: Provider) -> String {
+        let reason = provider.error ?? "no reading"
+        guard provider.stale, let measured = provider.measuredAt else {
+            return "\(provider.name): \(reason)"
+        }
+        return "\(provider.name): \(reason) · rows from \(Pace.clockLabel(measured))"
+    }
+}
+
+// --------------------------------------------------------------------- //
+
 struct ProviderBlock: View {
     let provider: Provider
     let metrics: RowMetrics
@@ -190,14 +233,18 @@ struct ProviderBlock: View {
 
                 Spacer(minLength: 6)
 
-                if showsNote {
+                if showsNote, let note {
                     Text(note.text)
                         .font(.system(size: 12))
                         .foregroundStyle(note.color)
                 }
             }
 
-            if provider.ok {
+            // A provider with no reading contributes its name and nothing else:
+            // the reason is carried once by `OutageNotice`, above the list.
+            // Carried-over rows are dimmed there, so they cannot be mistaken
+            // for numbers that were just measured.
+            VStack(alignment: .leading, spacing: metrics.trackHeight == 10 ? 10 : 9) {
                 ForEach(provider.windows) { window in
                     UsageRow(
                         window: window,
@@ -205,11 +252,8 @@ struct ProviderBlock: View {
                         isWorst: worstRow == Report.rowKey(provider: provider, window: window)
                     )
                 }
-            } else {
-                Text(provider.error ?? "unavailable")
-                    .font(.system(size: metrics.resetSize))
-                    .foregroundStyle(Pace.bad)
             }
+            .opacity(provider.stale ? 0.55 : 1)
         }
     }
 
