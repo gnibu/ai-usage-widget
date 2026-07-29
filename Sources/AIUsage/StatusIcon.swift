@@ -14,7 +14,13 @@ enum StatusIcon {
         var provider: String
         /// The window's own label, of which only the first letter is drawn.
         var window: String = ""
+        /// Fills the ring. Always the share of the budget spent, whichever
+        /// reading the text beside it quotes — a ring needs a number with an
+        /// end to it, and pace has none.
         var percent: Double?
+        /// The percentage as printed, already formatted by `Pace.reading` so
+        /// that the icon has no say in which of the two readings it is.
+        var text: String?
         var color: Color
     }
 
@@ -111,7 +117,7 @@ enum StatusIcon {
             widths.append(ring)
         }
         if parts.contains(.percent) {
-            widths.append(ceil(label(for: segment.percent).size(withAttributes: textAttributes).width))
+            widths.append(ceil(label(for: segment).size(withAttributes: textAttributes).width))
         }
         return widths.reduce(0, +) + partGap * CGFloat(max(0, widths.count - 1))
     }
@@ -141,7 +147,7 @@ enum StatusIcon {
 
         if parts.contains(.percent) {
             space()
-            let text = label(for: segment.percent)
+            let text = label(for: segment)
             let size = text.size(withAttributes: textAttributes)
             text.draw(at: NSPoint(x: x, y: (height - size.height) / 2), withAttributes: textAttributes)
         }
@@ -220,8 +226,7 @@ enum StatusIcon {
         arc.stroke()
     }
 
-    private static func label(for percent: Double?) -> NSString {
-        guard let percent else { return "--" }
-        return "\(Int(percent.rounded()))%" as NSString
+    private static func label(for segment: Segment) -> NSString {
+        (segment.text ?? "--") as NSString
     }
 }

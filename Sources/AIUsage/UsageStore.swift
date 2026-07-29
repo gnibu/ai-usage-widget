@@ -14,6 +14,9 @@ final class UsageStore: ObservableObject {
     @Published private(set) var report: Report?
     @Published private(set) var isRefreshing = false
     @Published private(set) var statusImage: NSImage = StatusIcon.image(segments: [])
+    /// Spells out both readings for whatever the item is drawn as, since the
+    /// icon has room for one number and no room at all to label it.
+    @Published private(set) var statusTooltip: String = "Tokens on Track — no reading yet"
 
     static var stateDirectory: URL {
         if let override = ProcessInfo.processInfo.environment["AI_USAGE_DIR"], !override.isEmpty {
@@ -95,14 +98,29 @@ final class UsageStore: ObservableObject {
 
     private func redrawIcon() {
         let preferences = Preferences.shared
-        let segments = menuBarWindows(limit: preferences.menuBarSlots).map {
+        let shown = menuBarWindows(limit: preferences.menuBarSlots)
+        let segments = shown.map {
             StatusIcon.Segment(
                 provider: $0.provider.name,
                 window: $0.window.label,
                 percent: $0.window.percent,
+                text: Pace.reading($0.window, mode: preferences.percentMode).text,
                 color: Pace.color($0.window)
             )
         }
+
+        // One line per segment drawn, in the order they appear in the bar, and
+        // the sentence explaining pace once at the end rather than on each.
+        let lines = shown.map {
+            Pace.tooltip(
+                source: "\($0.provider.name) \($0.window.label)",
+                window: $0.window,
+                explains: false
+            )
+        }
+        statusTooltip = lines.isEmpty
+            ? "Tokens on Track — no reading yet"
+            : (lines + [Pace.paceExplainer]).joined(separator: "\n")
 
         var parts: StatusIcon.Parts = []
         if preferences.showLogoInMenuBar { parts.insert(.mark) }

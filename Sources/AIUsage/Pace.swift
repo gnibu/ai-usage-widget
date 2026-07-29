@@ -50,10 +50,24 @@ enum Pace {
         return min(100, max(0, elapsed / Double(length) * 100))
     }
 
+    /// Share of the window that has to be gone before a pace ratio is quoted at
+    /// all. Spending divided by a very small elapsed share swings wildly from
+    /// one poll to the next, so early on the answer is "not yet" rather than a
+    /// number that will look different in a minute.
+    ///
+    /// Two floors because the two uses can bear different amounts of noise. The
+    /// severity tier picks the colour of a row and the window the menu bar
+    /// speaks for, so it waits for the ratio to settle. A printed percentage is
+    /// read once, next to the reset time that explains why it is early, and
+    /// holding it back to match the colour left freshly reset windows with
+    /// nothing to say for hours.
+    static let severityFloor: Double = 5
+    static let displayFloor: Double = 1
+
     /// How far ahead of an even burn the window is. 1.0 is exactly on pace.
     /// Nil before the window has run long enough for the ratio to mean anything.
-    static func ratio(_ window: UsageWindow, now: Date = Date()) -> Double? {
-        guard let elapsed = elapsedPercent(window, now: now), elapsed >= 5 else { return nil }
+    static func ratio(_ window: UsageWindow, floor: Double = severityFloor, now: Date = Date()) -> Double? {
+        guard let elapsed = elapsedPercent(window, now: now), elapsed >= floor else { return nil }
         return window.percent / elapsed
     }
 
@@ -61,8 +75,84 @@ enum Pace {
     /// spending measured against the even-burn mark on the track rather than
     /// against the whole budget. 100 sits exactly on the mark, 150 is half
     /// again past it. Nil while the mark is still too early to mean anything.
-    static func paceIndex(_ window: UsageWindow, now: Date = Date()) -> Double? {
-        ratio(window, now: now).map { $0 * 100 }
+    static func paceIndex(
+        _ window: UsageWindow,
+        floor: Double = severityFloor,
+        now: Date = Date()
+    ) -> Double? {
+        ratio(window, floor: floor, now: now).map { $0 * 100 }
+    }
+
+    /// Which number the percentages quote. The gauges are unaffected either
+    /// way: a ring or a track always fills to the share of the budget spent,
+    /// because that is the only one of the two readings with an end to it.
+    enum PercentMode: String, CaseIterable {
+        /// How much of the budget is gone. 100% is the budget spent.
+        case budget
+        /// How that spending compares with an even burn. 100% sits exactly on
+        /// the even-burn mark, which is the white notch on the tracks.
+        case pace
+    }
+
+    /// A pace reading early in a window is a small number over a smaller one
+    /// and runs to four figures. Past this the exact value says nothing the cap
+    /// does not, and in the menu bar it would widen the item a digit at a time.
+    static let paceCeiling: Double = 999
+
+    /// What a column shows for a window that has no pace yet. Not the budget
+    /// number: the two readings share one column, so a budget percentage
+    /// printed under a "pace" heading is indistinguishable from a pace one and
+    /// silently means something else. The track beside it still fills to the
+    /// budget, and the reset time beside that says why the window is early.
+    static let noReading = "—"
+
+    /// The percentage a surface prints, and whether there was one to print.
+    struct Reading {
+        let text: String
+        /// False when the window is too young for a pace and pace was asked
+        /// for. The surfaces dim it, so an absent reading is not mistaken for
+        /// a very small one.
+        let hasValue: Bool
+    }
+
+    static func reading(_ window: UsageWindow, mode: PercentMode, now: Date = Date()) -> Reading {
+        guard mode == .pace else {
+            return Reading(text: "\(Int(window.percent.rounded()))%", hasValue: true)
+        }
+        guard let index = paceIndex(window, floor: displayFloor, now: now) else {
+            return Reading(text: noReading, hasValue: false)
+        }
+        return Reading(text: "\(Int(min(paceCeiling, index).rounded()))%", hasValue: true)
+    }
+
+    /// What a pace percentage is measured against. Said once per tooltip, not
+    /// once per window in it.
+    static let paceExplainer = "100% of pace is spending exactly in step with the clock."
+
+    /// The line behind the menu bar item. A bare "142%" cannot say which of the
+    /// two readings it is, so the tooltip states both and how far into the
+    /// window they were taken.
+    ///
+    /// `explains` appends `paceExplainer`; leave it off when several of these
+    /// are being stacked and the caller adds the sentence itself.
+    static func tooltip(
+        source: String?,
+        window: UsageWindow,
+        explains: Bool = true,
+        now: Date = Date()
+    ) -> String {
+        let spent = "\(Int(window.percent.rounded()))% of the budget spent"
+        let lead = source.map { "\($0) — " } ?? ""
+
+        guard let index = paceIndex(window, now: now), let elapsed = elapsedPercent(window, now: now)
+        else {
+            return "\(lead)\(spent). Too early in the window to judge the pace."
+        }
+        let reading = """
+            \(lead)\(Int(min(paceCeiling, index).rounded()))% of pace · \(spent), \
+            \(Int(elapsed.rounded()))% of the window gone.
+            """
+        return explains ? "\(reading) \(paceExplainer)" : reading
     }
 
     /// Green while spending is at or under the even-burn pace, orange when
@@ -143,7 +233,15 @@ enum Pace {
         let hot: Bool
     }
 
-    static func verdict(_ report: Report?, now: Date = Date()) -> Verdict {
+    /// `mode` decides which reading the summary sentence quotes, so that it
+    /// agrees with the column of numbers underneath it. That agreement is what
+    /// labels the column: a heading over it was tried and read as clutter, and
+    /// this sentence was already on screen saying "70% of pace" in words.
+    static func verdict(
+        _ report: Report?,
+        mode: PercentMode = .budget,
+        now: Date = Date()
+    ) -> Verdict {
         guard let worst = report?.busiestWindows(limit: 1, now: now).first else {
             return Verdict(
                 headline: "No reading yet",
@@ -161,7 +259,7 @@ enum Pace {
         let window = worst.window
         let tier = severityTier(window, now: now)
         let exhausted = tier == 2 && window.percent >= 90
-        let reading = readingPhrase(window, now: now)
+        let reading = readingPhrase(window, mode: mode, now: now)
 
         let short: String
         switch tier {
@@ -185,12 +283,17 @@ enum Pace {
         )
     }
 
-    /// The number the summary quotes. Against the even-burn mark once there is
-    /// one, since "63% of the week" says nothing about whether that is early or
-    /// late; against the budget only while the window is too young for a mark.
-    private static func readingPhrase(_ window: UsageWindow, now: Date) -> String {
-        if let index = paceIndex(window, now: now) {
-            return "\(Int(index.rounded()))% of pace"
+    /// The number the summary quotes, named. Whichever reading the rows below
+    /// are showing, said in words — "70% of pace" or "36% of the week" — so the
+    /// bare percentages in the column inherit the noun from the sentence above
+    /// them.
+    ///
+    /// Pace mode still falls back to the budget here rather than to a dash. A
+    /// column of numbers has to be read against one heading and cannot carry
+    /// a substitution, but a sentence names whatever it is quoting.
+    private static func readingPhrase(_ window: UsageWindow, mode: PercentMode, now: Date) -> String {
+        if mode == .pace, let index = paceIndex(window, floor: displayFloor, now: now) {
+            return "\(Int(min(paceCeiling, index).rounded()))% of pace"
         }
         return "\(Int(window.percent.rounded()))% of \(phrase(window.label))"
     }

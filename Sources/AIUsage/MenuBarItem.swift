@@ -32,6 +32,7 @@ final class MenuBarItem {
     func start() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         item.button?.image = UsageStore.shared.statusImage
+        item.button?.toolTip = UsageStore.shared.statusTooltip
         item.button?.target = self
         item.button?.action = #selector(toggle)
         item.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
@@ -39,6 +40,10 @@ final class MenuBarItem {
 
         UsageStore.shared.$statusImage
             .sink { [weak self] image in self?.item?.button?.image = image }
+            .store(in: &watches)
+
+        UsageStore.shared.$statusTooltip
+            .sink { [weak self] text in self?.item?.button?.toolTip = text }
             .store(in: &watches)
     }
 
