@@ -177,7 +177,7 @@ private struct CardWindowView: View {
                     Preferences.shared.showDesktopCard = false
                 }
                 Divider()
-                Button("Quit AI Usage") {
+                Button("Quit Tokens on Track") {
                     NSApplication.shared.terminate(nil)
                 }
             }

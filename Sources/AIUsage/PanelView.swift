@@ -102,7 +102,7 @@ private struct SettingsTab: View {
 
             // Quit stays put instead of hiding at the bottom of the scroll.
             footer
-                .padding(EdgeInsets(top: 0, leading: 18, bottom: 18, trailing: 18))
+                .padding(EdgeInsets(top: 12, leading: 18, bottom: 18, trailing: 18))
         }
     }
 
@@ -247,7 +247,7 @@ private struct SettingsTab: View {
 
     private var footer: some View {
         HStack(spacing: 12) {
-            Text("v\(Self.version) · io.github.ai-usage")
+            Text("Tokens on Track · v\(Self.version)")
                 .font(.system(size: 11))
                 .foregroundStyle(Glass.ink(0.4))
             Spacer(minLength: 8)

@@ -1,14 +1,15 @@
 #!/bin/sh
-# Build AI Usage.app from the SwiftPM target. Needs the Command Line Tools
+# Build Tokens on Track.app from the SwiftPM target. Needs the Command Line Tools
 # only — there is no Xcode project to open.
 #
-#   ./build.sh              build into .build/AI Usage.app
+#   ./build.sh              build into .build/Tokens on Track.app
 #   ./build.sh --install    also copy it to /Applications and launch it
 set -eu
 
 cd "$(dirname "$0")"
 
-APP_NAME="AI Usage"
+APP_NAME="Tokens on Track"
+LEGACY_APP_NAME="AI Usage"
 BUNDLE=".build/${APP_NAME}.app"
 INSTALL_DIR="/Applications"
 LEGACY_AGENT_DIR="${HOME}/Library/LaunchAgents"
@@ -35,7 +36,8 @@ codesign --force --sign - --timestamp=none "$BUNDLE"
 
 if [ "${1:-}" = "--install" ]; then
     echo "==> installing to ${INSTALL_DIR}"
-    osascript -e 'quit app "AI Usage"' 2>/dev/null || true
+    osascript -e "quit app \"${APP_NAME}\"" 2>/dev/null || true
+    osascript -e "quit app \"${LEGACY_APP_NAME}\"" 2>/dev/null || true
 
     # Retire both published launch-agent labels and the old Übersicht widget.
     # The Übersicht app and pipx package are left alone because they may still
@@ -48,6 +50,7 @@ if [ "${1:-}" = "--install" ]; then
     rm -f "$LEGACY_WIDGET"
 
     rm -rf "${INSTALL_DIR}/${APP_NAME}.app"
+    rm -rf "${INSTALL_DIR}/${LEGACY_APP_NAME}.app"
     cp -R "$BUNDLE" "${INSTALL_DIR}/"
     open "${INSTALL_DIR}/${APP_NAME}.app"
     echo "    running — look for the ring in the menu bar"

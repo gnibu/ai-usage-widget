@@ -35,13 +35,13 @@ opens at a negative x and no screenshot will ever contain it. Install and drive
 the real app:
 
 ```sh
-swift build && ./build.sh --install    # relaunches /Applications/AI Usage.app
+swift build && ./build.sh --install    # relaunches /Applications/Tokens on Track.app
 ```
 
 ### 2. Open the dropdown without a human
 
 ```sh
-PID=$(pgrep -f "/Applications/AI Usage.app")
+PID=$(pgrep -f "/Applications/Tokens on Track.app")
 osascript -e "tell application \"System Events\" to tell (first process whose unix id is $PID) to get {position, size} of menu bar item 1 of menu bar 1"
 # -> 3179, 3, 147, 24   (x, y, w, h)
 cliclick c:3252,15                     # centre of the item
