@@ -122,11 +122,21 @@ struct Report: Codable, Equatable {
             let measured = (old.stale ? old.measuredAt : previous.updatedAt) ?? previous.updatedAt
             guard now.timeIntervalSince1970 - Double(measured) < Self.carryLimit else { return provider }
 
+            // A window that has passed its reset is a fresh window we know
+            // nothing about, not a spent one: carrying "94%, nearly out" across
+            // the boundary would keep the menu bar red through the first hours
+            // of a quota that is actually empty.
+            let live = old.windows.filter { window in
+                guard let resetsAt = window.resetsAt, resetsAt > 0 else { return true }
+                return Double(resetsAt) > now.timeIntervalSince1970
+            }
+            guard !live.isEmpty else { return provider }
+
             var carried = provider
             carried.ok = true
             carried.stale = true
             carried.plan = provider.plan ?? old.plan
-            carried.windows = old.windows
+            carried.windows = live
             carried.measuredAt = measured
             return carried
         }

@@ -21,6 +21,7 @@ enum RegressionTests {
         testStrayArgumentAfterCloseIsRejected()
         testFailedPollKeepsTheLastReading()
         testCarriedReadingIsDroppedOnceItIsOld()
+        testCarriedWindowIsDroppedOnceItHasReset()
         print("All regression tests passed")
     }
 
@@ -206,8 +207,10 @@ enum RegressionTests {
         )
         var failed = Provider(name: "Claude")
         failed.error = "stored token went stale — run claude once to refresh it"
-        let merged = Report(providers: [failed], date: now.addingTimeInterval(900))
-            .carryingOver(from: good, now: now.addingTimeInterval(900))
+        // Inside the carried window's own life: a window that has reset is a
+        // separate case, and `testCarriedWindowIsDroppedOnceItHasReset` has it.
+        let later = now.addingTimeInterval(300)
+        let merged = Report(providers: [failed], date: later).carryingOver(from: good, now: later)
 
         let carried = merged.providers[0]
         check(carried.ok, "a one-off failed poll must not blank the provider out")
@@ -229,6 +232,43 @@ enum RegressionTests {
 
         check(!merged.providers[0].ok, "a reading older than the carry limit must not be shown as usable")
         check(merged.providers[0].windows.isEmpty, "stale-beyond-limit rows must be dropped")
+    }
+
+    private static func testCarriedWindowIsDroppedOnceItHasReset() {
+        // 94% of a five-hour window that resets a minute from now. Once it has,
+        // the quota is empty and carrying the old number would keep the menu bar
+        // red — and the verdict at "nearly out" — through the fresh window.
+        let spent = UsageWindow(
+            label: "5h",
+            percent: 94,
+            resetsAt: Int(now.timeIntervalSince1970) + 60,
+            windowSeconds: 18_000
+        )
+        let week = UsageWindow(
+            label: "week",
+            percent: 30,
+            resetsAt: Int(now.timeIntervalSince1970) + 86_400,
+            windowSeconds: 604_800
+        )
+        let good = Report(providers: [provider(name: "Claude", windows: [spent, week])], date: now)
+
+        let later = now.addingTimeInterval(120)
+        var failed = Provider(name: "Claude")
+        failed.error = "stored token went stale — run claude once"
+        let merged = Report(providers: [failed], date: later).carryingOver(from: good, now: later)
+
+        let carried = merged.providers[0]
+        check(carried.ok && carried.stale, "the windows that have not reset must still be carried")
+        check(
+            carried.windows.map(\.label) == ["week"],
+            "a window carried past its own reset must be dropped"
+        )
+
+        // And with nothing left to carry, the provider goes back to having no
+        // reading rather than to an empty one that still counts as usable.
+        let onlySpent = Report(providers: [provider(name: "Claude", windows: [spent])], date: now)
+        let emptied = Report(providers: [failed], date: later).carryingOver(from: onlySpent, now: later)
+        check(!emptied.providers[0].ok, "a provider whose every carried window has reset is not ok")
     }
 
     // ----------------------------------------------------------------- //
