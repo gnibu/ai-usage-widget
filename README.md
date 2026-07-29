@@ -173,11 +173,17 @@ under System Settings → Notifications → AI Usage. Notifications need the app
 be signed, which `build.sh` handles — running the raw `swift build` binary skips
 them on purpose.
 
-**`token expired — run claude` / `run codex`**
+**`stored token went stale — run claude once` / `run codex once`**
 
-The OAuth token lapsed. Start the relevant CLI once; it refreshes the token in
-place and the next fetch recovers. By design this app never refreshes tokens
-itself — it will not touch your logins.
+You are still signed in. Each CLI keeps a refresh token and mints a new access
+token when it next runs, so the copy this app reads out of their store lapses on
+its own — overnight, typically. Start the relevant CLI once and the next fetch
+recovers. By design this app never refreshes tokens itself — it will not touch
+your logins.
+
+Until it recovers, the rows carry the last reading that did land, dimmed, with
+the notice saying when it was taken. They are dropped once they are three hours
+old or their window has reset, whichever comes first.
 
 **`http 403` from Codex**
 

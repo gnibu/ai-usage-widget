@@ -42,16 +42,16 @@ enum Fetcher {
 
         let data: [String: Any]
         do {
-            data = try await getJSON(claudeUsageURL, headers: [
+            data = try await getJSONRetrying(claudeUsageURL, headers: [
                 "Authorization": "Bearer \(token)",
                 "anthropic-beta": "oauth-2025-04-20",
                 "Accept": "application/json",
             ])
         } catch let error as HTTPStatus {
-            provider.error = error.code == 401 ? "token expired — run claude" : "http \(error.code)"
+            provider.error = note(for: error.code, refreshWith: "claude")
             return provider
         } catch {
-            provider.error = String(error.localizedDescription.prefix(80))
+            provider.error = "unreachable — \(error.localizedDescription.prefix(60))"
             return provider
         }
 
@@ -95,19 +95,14 @@ enum Fetcher {
 
         let data: [String: Any]
         do {
-            do {
-                data = try await getJSON(codexUsageURL, headers: headers)
-            } catch let error as HTTPStatus where error.code == 403 {
-                // The edge in front of chatgpt.com occasionally answers 403 to
-                // an otherwise valid request; one retry clears it.
-                try await Task.sleep(nanoseconds: 2_000_000_000)
-                data = try await getJSON(codexUsageURL, headers: headers)
-            }
+            // The edge in front of chatgpt.com occasionally answers 403 to an
+            // otherwise valid request; the retry inside covers that.
+            data = try await getJSONRetrying(codexUsageURL, headers: headers)
         } catch let error as HTTPStatus {
-            provider.error = error.code == 401 ? "token expired — run codex" : "http \(error.code)"
+            provider.error = note(for: error.code, refreshWith: "codex")
             return provider
         } catch {
-            provider.error = String(error.localizedDescription.prefix(80))
+            provider.error = "unreachable — \(error.localizedDescription.prefix(60))"
             return provider
         }
 
@@ -150,6 +145,43 @@ enum Fetcher {
 
     struct HTTPStatus: Error {
         let code: Int
+    }
+
+    /// What to tell the reader about a failed poll.
+    ///
+    /// A 401 is not a sign-out: both CLIs keep a refresh token and mint a new
+    /// access token when they next run, so the copy we read from their store
+    /// simply goes stale — overnight, typically. Saying "expired, log in again"
+    /// there was wrong as well as alarming; running the CLI once is the fix.
+    static func note(for code: Int, refreshWith command: String) -> String {
+        switch code {
+        case 401: return "stored token went stale — run \(command) once"
+        case 429: return "rate limited — the reading will catch up"
+        case 500...599: return "the service is not answering (http \(code))"
+        default: return "http \(code)"
+        }
+    }
+
+    /// One retry, two seconds later, on a failure a second attempt can plausibly
+    /// clear: a dropped connection, a 5xx, a throttle, or the 403 the chatgpt.com
+    /// edge sometimes answers with. A 401 is not retried — the stored token will
+    /// not have changed by then; only the CLI running again fixes that.
+    private static func getJSONRetrying(
+        _ url: URL,
+        headers: [String: String]
+    ) async throws -> [String: Any] {
+        do {
+            return try await getJSON(url, headers: headers)
+        } catch {
+            guard retryable(error) else { throw error }
+            try await Task.sleep(nanoseconds: 2_000_000_000)
+            return try await getJSON(url, headers: headers)
+        }
+    }
+
+    private static func retryable(_ error: Error) -> Bool {
+        guard let status = error as? HTTPStatus else { return true }
+        return status.code == 403 || status.code == 429 || status.code >= 500
     }
 
     private static func getJSON(_ url: URL, headers: [String: String]) async throws -> [String: Any] {

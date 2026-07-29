@@ -31,7 +31,9 @@ enum Notifier {
         guard isBundled else { return }
         var marks = loadMarks()
 
-        for provider in report.providers where provider.ok {
+        // Carried-over numbers were already judged when they were fresh; a
+        // stale provider must not be able to raise an alert twice.
+        for provider in report.providers where provider.ok && !provider.stale {
             for window in provider.windows {
                 let key = "\(provider.name)/\(window.label)"
                 var mark = marks[key] ?? Mark(resetsAt: window.resetsAt)

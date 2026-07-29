@@ -203,8 +203,11 @@ enum Pace {
     }
 
     /// The word beside a provider's name: how that provider on its own is doing.
-    static func note(_ provider: Provider, now: Date = Date()) -> (text: String, color: Color) {
-        guard provider.ok else { return (provider.error ?? "unavailable", bad) }
+    /// Nil when the reading is missing or carried over from an earlier poll:
+    /// what happened is said once, in the notice above the list, and a verdict
+    /// read off stale numbers would be stated with more confidence than it has.
+    static func note(_ provider: Provider, now: Date = Date()) -> (text: String, color: Color)? {
+        guard provider.ok, !provider.stale else { return nil }
         guard let worst = provider.windows.max(by: { severity($0, now: now) < severity($1, now: now) })
         else { return ("no windows", .white.opacity(0.45)) }
 
@@ -215,6 +218,13 @@ enum Pace {
         case 1: return ("ahead of pace", warn)
         default: return ("under budget", good)
         }
+    }
+
+    /// Bare wall clock, for saying when a carried-over reading was taken.
+    static func clockLabel(_ epoch: Int) -> String {
+        let clock = DateFormatter()
+        clock.dateFormat = "HH:mm"
+        return clock.string(from: Date(timeIntervalSince1970: Double(epoch)))
     }
 
     /// Absolute reset time. Bare clock today, weekday within the week, and a
