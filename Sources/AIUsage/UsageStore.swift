@@ -205,6 +205,9 @@ final class UsageStore: ObservableObject {
 
     private func clockContextChanged() {
         redrawIcon()
+        if let report {
+            Notifier.evaluate(report, evaluateUsage: false)
+        }
         scheduleNextBoundary()
     }
 

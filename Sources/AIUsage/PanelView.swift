@@ -433,10 +433,13 @@ private struct WorkdayPicker: View {
     let enabled: Bool
     let setSelected: (WorkSchedule.Weekday, Bool) -> Void
 
+    @FocusState private var focusedDay: WorkSchedule.Weekday?
+
     var body: some View {
         HStack(spacing: 4) {
             ForEach(WorkSchedule.Weekday.mondayFirst) { day in
                 let chosen = selected.contains(day)
+                let focused = focusedDay == day
                 Button {
                     setSelected(day, !chosen)
                 } label: {
@@ -452,10 +455,16 @@ private struct WorkdayPicker: View {
                             )
                         )
                         .overlay(
-                            Circle().strokeBorder(Color.white.opacity(chosen ? 0.17 : 0.08))
+                            ZStack {
+                                Circle().strokeBorder(Color.white.opacity(chosen ? 0.17 : 0.08))
+                                if focused {
+                                    Circle().strokeBorder(Color.accentColor, lineWidth: 2)
+                                }
+                            }
                         )
                 }
                 .buttonStyle(.plain)
+                .focused($focusedDay, equals: day)
                 .focusEffectDisabled()
                 .disabled(!enabled || (chosen && selected.count == 1))
                 .accessibilityLabel(day.accessibilityLabel)
