@@ -166,10 +166,10 @@ extension View {
 // --------------------------------------------------------------------- //
 
 /// The consumption bar: a groove cut into the glass, a fill that glows, and
-/// the even-burn mark as a notch straight through both.
+/// the current target as a notch straight through both.
 struct UsageTrack: View {
     let percent: Double
-    let elapsed: Double?
+    let target: Double?
     let palette: Pace.Palette
     var height: CGFloat = 10
     var glows: Bool = true
@@ -190,12 +190,12 @@ struct UsageTrack: View {
                 fill(in: width, radius: radius)
 
                 // Where usage *should* be if spent evenly across the window.
-                if let elapsed, elapsed > 0 {
+                if let target, target > 0 {
                     RoundedRectangle(cornerRadius: 1, style: .continuous)
                         .fill(Color.white.opacity(0.85))
                         .frame(width: 2, height: height + 6)
                         .shadow(color: .black.opacity(0.4), radius: 3)
-                        .offset(x: min(width - 2, width * elapsed / 100 - 1))
+                        .offset(x: min(width - 2, width * target / 100 - 1))
                 }
             }
         }
@@ -217,12 +217,12 @@ struct UsageTrack: View {
 }
 
 /// The donut in the summary line: one glance at the worst window. Carries the
-/// same even-burn mark as the tracks, so "how much is gone" and "how far into
-/// the window we are" are read off one shape.
-struct PaceRing: View {
+/// same target mark as the tracks, so usage and where it should be now are read
+/// off one shape.
+struct UsageRing: View {
     let percent: Double
     let color: Color
-    var elapsed: Double? = nil
+    var target: Double? = nil
     var size: CGFloat = 40
 
     var body: some View {
@@ -235,13 +235,13 @@ struct PaceRing: View {
                 .stroke(color, style: StrokeStyle(lineWidth: line, lineCap: .round))
                 .rotationEffect(.degrees(-90))
 
-            if let elapsed, elapsed > 0 {
+            if let target, target > 0 {
                 Capsule()
                     .fill(Color.white.opacity(0.85))
                     .frame(width: 2, height: line + 5)
                     .shadow(color: .black.opacity(0.4), radius: 2)
                     .offset(y: -(size - line) / 2)
-                    .rotationEffect(.degrees(min(100, elapsed) / 100 * 360))
+                    .rotationEffect(.degrees(min(100, target) / 100 * 360))
             }
         }
         .frame(width: size, height: size)

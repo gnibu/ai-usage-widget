@@ -170,13 +170,15 @@ struct Report: Codable, Equatable {
     func busiestWindows(
         limit: Int,
         fairShare: Bool = false,
-        now: Date = Date()
+        timing: Pace.Timing = Pace.Timing()
     ) -> [(provider: Provider, window: UsageWindow)] {
         guard limit > 0 else { return [] }
         let ranked = providers
             .filter(\.ok)
             .flatMap { provider in provider.windows.map { (provider: provider, window: $0) } }
-            .sorted { Pace.severity($0.window, now: now) > Pace.severity($1.window, now: now) }
+            .sorted {
+                Pace.severity($0.window, timing: timing) > Pace.severity($1.window, timing: timing)
+            }
 
         guard fairShare else { return Array(ranked.prefix(limit)) }
 

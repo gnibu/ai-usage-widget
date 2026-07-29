@@ -39,9 +39,11 @@ struct RowMetrics {
 struct DesktopUsageCard: View {
     @EnvironmentObject private var store: UsageStore
     @ObservedObject private var preferences = Preferences.shared
+    var timing: Pace.Timing?
 
     var body: some View {
-        let verdict = Pace.verdict(store.report, mode: preferences.percentMode)
+        let timing = timing ?? Pace.Timing(schedule: preferences.workSchedule)
+        let verdict = Pace.verdict(store.report, mode: preferences.percentMode, timing: timing)
 
         VStack(alignment: .leading, spacing: 18) {
             header(verdict)
@@ -56,6 +58,7 @@ struct DesktopUsageCard: View {
                         provider: provider,
                         metrics: .card,
                         mode: preferences.percentMode,
+                        timing: timing,
                         worstRow: verdict.rowKey
                     )
                 }
@@ -69,10 +72,10 @@ struct DesktopUsageCard: View {
 
     private func header(_ verdict: Pace.Verdict) -> some View {
         HStack(spacing: 14) {
-            PaceRing(
+            UsageRing(
                 percent: verdict.percent,
                 color: verdict.color,
-                elapsed: verdict.elapsed,
+                target: verdict.target,
                 size: 40
             )
 
@@ -112,7 +115,8 @@ struct MenuUsageView: View {
     @ObservedObject private var preferences = Preferences.shared
 
     var body: some View {
-        let verdict = Pace.verdict(store.report, mode: preferences.percentMode)
+        let timing = Pace.Timing(schedule: preferences.workSchedule)
+        let verdict = Pace.verdict(store.report, mode: preferences.percentMode, timing: timing)
 
         VStack(alignment: .leading, spacing: 16) {
             summary(verdict)
@@ -126,6 +130,7 @@ struct MenuUsageView: View {
                             provider: provider,
                             metrics: .menu,
                             mode: preferences.percentMode,
+                            timing: timing,
                             showsNote: false,
                             worstRow: verdict.rowKey
                         )
@@ -141,10 +146,10 @@ struct MenuUsageView: View {
 
     private func summary(_ verdict: Pace.Verdict) -> some View {
         HStack(spacing: 12) {
-            PaceRing(
+            UsageRing(
                 percent: verdict.percent,
                 color: verdict.color,
-                elapsed: verdict.elapsed,
+                target: verdict.target,
                 size: 36
             )
 
@@ -220,13 +225,14 @@ struct ProviderBlock: View {
     /// from `Preferences` here, so one observer at the top of each surface
     /// redraws the whole list.
     var mode: Pace.PercentMode = .budget
+    var timing = Pace.Timing()
     var showsNote: Bool = true
     /// The row the summary above is speaking for, marked here so the reader can
     /// trace the ring back to the window it came from.
     var worstRow: String? = nil
 
     var body: some View {
-        let note = Pace.note(provider)
+        let note = Pace.note(provider, timing: timing)
 
         VStack(alignment: .leading, spacing: metrics.trackHeight == 10 ? 10 : 9) {
             HStack(alignment: .firstTextBaseline, spacing: 9) {
@@ -262,6 +268,7 @@ struct ProviderBlock: View {
                         window: window,
                         metrics: metrics,
                         mode: mode,
+                        timing: timing,
                         isWorst: worstRow == Report.rowKey(provider: provider, window: window)
                     )
                 }
@@ -324,17 +331,18 @@ struct UsageRow: View {
     let window: UsageWindow
     let metrics: RowMetrics
     var mode: Pace.PercentMode = .budget
+    var timing = Pace.Timing()
     var isWorst: Bool = false
 
     var body: some View {
-        let reading = Pace.reading(window, mode: mode)
+        let reading = Pace.reading(window, mode: mode, timing: timing)
 
         HStack(spacing: metrics.gap) {
             // The dot sits in a gutter every row pays for, so marking a row
             // moves nothing.
             HStack(spacing: 5) {
                 Circle()
-                    .fill(isWorst ? Pace.color(window) : .clear)
+                    .fill(isWorst ? Pace.color(window, timing: timing) : .clear)
                     .frame(width: 4, height: 4)
 
                 Text(window.label)
@@ -345,15 +353,15 @@ struct UsageRow: View {
 
             UsageTrack(
                 percent: window.percent,
-                elapsed: Pace.elapsedPercent(window),
-                palette: Pace.palette(window),
+                target: Pace.targetPercent(window, timing: timing),
+                palette: Pace.palette(window, timing: timing),
                 height: metrics.trackHeight,
                 glows: metrics.glows
             )
 
             // Dimmed when there is nothing to report and when the window is too
-            // young to have a pace, so a dash reads as "not yet" rather than as
-            // a reading in its own right.
+            // young to have a stable target comparison, so a dash reads as
+            // "not yet" rather than as a reading in its own right.
             Text(reading.text)
                 .font(.system(size: metrics.percentSize, weight: .semibold))
                 .monospacedDigit()

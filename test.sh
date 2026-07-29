@@ -8,6 +8,7 @@ mkdir -p .build
 
 swiftc -parse-as-library \
     Sources/AIUsage/Report.swift \
+    Sources/AIUsage/WorkSchedule.swift \
     Sources/AIUsage/Pace.swift \
     Sources/AIUsage/Fetcher.swift \
     Sources/AIUsage/BrandGlyph.swift \

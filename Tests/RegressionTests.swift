@@ -5,6 +5,7 @@ import Foundation
 @main
 enum RegressionTests {
     private static let now = Date(timeIntervalSince1970: 1_000_000)
+    private static let wallTiming = Pace.Timing(now: now)
 
     static func main() {
         testRedHighUsageWindowOutranksGreenWindow()
@@ -23,11 +24,21 @@ enum RegressionTests {
         testCarriedReadingIsDroppedOnceItIsOld()
         testCarriedWindowIsDroppedOnceItHasReset()
         testBudgetModeQuotesTheBudget()
-        testPaceModeQuotesThePaceIndex()
-        testPaceModeSaysNothingWhileTheWindowIsYoung()
+        testTargetModeQuotesThePaceIndex()
+        testTargetModeSaysNothingWhileTheWindowIsYoung()
         testPaceIsPrintedSoonerThanItIsColoured()
         testPaceReadingIsCapped()
         testTooltipStatesBothReadings()
+        testVerdictUsesTargetLanguage()
+        testWorkingHoursRedistributeShortWindow()
+        testWorkingHoursSwitchBackToWallClock()
+        testWorkingHoursSpreadAWeekAcrossAllSelectedHours()
+        testWorkingHoursZeroOverlapFallsBackToWallClock()
+        testWorkingHoursDisabledUsesWallClock()
+        testOvernightScheduleBelongsToItsStartDay()
+        testScheduleRespectsDST()
+        testScheduleUsesTheProvidedTimeZone()
+        testScheduleBoundaryIsExact()
         print("All regression tests passed")
     }
 
@@ -35,7 +46,7 @@ enum RegressionTests {
         let green = window(percent: 80, elapsedPercent: 80)
         let red = window(percent: 95, elapsedPercent: 95)
         check(
-            Pace.severity(green, now: now) < Pace.severity(red, now: now),
+            Pace.severity(green, timing: wallTiming) < Pace.severity(red, timing: wallTiming),
             "95% red window must outrank 80% green window"
         )
     }
@@ -44,7 +55,7 @@ enum RegressionTests {
         let green = window(percent: 80, elapsedPercent: 80)
         let red = window(percent: 50, elapsedPercent: 25)
         check(
-            Pace.severity(green, now: now) < Pace.severity(red, now: now),
+            Pace.severity(green, timing: wallTiming) < Pace.severity(red, timing: wallTiming),
             "red pace window must outrank higher-percentage green window"
         )
     }
@@ -82,7 +93,7 @@ enum RegressionTests {
     private static func testBusiestWindowsIgnoreWhoOwnsThem() {
         // Two busy Claude windows and one idle Codex one: asking for the two
         // busiest has to mean exactly that, twice the same provider included.
-        let picked = twoProviderReport().busiestWindows(limit: 2, now: now)
+        let picked = twoProviderReport().busiestWindows(limit: 2, timing: wallTiming)
         check(
             picked.map(\.provider.name) == ["Claude", "Claude"],
             "the busiest windows must be the busiest, whoever owns them"
@@ -94,7 +105,11 @@ enum RegressionTests {
     }
 
     private static func testFairShareGivesEveryProviderASlot() {
-        let picked = twoProviderReport().busiestWindows(limit: 2, fairShare: true, now: now)
+        let picked = twoProviderReport().busiestWindows(
+            limit: 2,
+            fairShare: true,
+            timing: wallTiming
+        )
         check(
             picked.map(\.provider.name) == ["Claude", "Codex"],
             "fair share must seat a second provider before the first repeats"
@@ -102,7 +117,11 @@ enum RegressionTests {
     }
 
     private static func testFairShareSpendsSpareSlotsOnTheNextWorstWindow() {
-        let picked = twoProviderReport().busiestWindows(limit: 3, fairShare: true, now: now)
+        let picked = twoProviderReport().busiestWindows(
+            limit: 3,
+            fairShare: true,
+            timing: wallTiming
+        )
         check(
             picked.map(\.provider.name) == ["Claude", "Codex", "Claude"],
             "a spare slot must go to the next worst window, whoever owns it"
@@ -280,30 +299,43 @@ enum RegressionTests {
     private static func testBudgetModeQuotesTheBudget() {
         // Half the budget a quarter of the way in — 50 against the budget, 200
         // against the clock. Budget mode must not be tempted by the latter.
-        let reading = Pace.reading(window(percent: 50, elapsedPercent: 25), mode: .budget, now: now)
+        let reading = Pace.reading(
+            window(percent: 50, elapsedPercent: 25),
+            mode: .budget,
+            timing: wallTiming
+        )
         check(reading.text == "50%", "budget mode must quote the budget, got \(reading.text)")
         check(reading.hasValue, "a budget reading always has a value")
     }
 
-    private static func testPaceModeQuotesThePaceIndex() {
-        let reading = Pace.reading(window(percent: 50, elapsedPercent: 25), mode: .pace, now: now)
-        check(reading.text == "200%", "pace mode must quote the pace index, got \(reading.text)")
+    private static func testTargetModeQuotesThePaceIndex() {
+        let reading = Pace.reading(
+            window(percent: 50, elapsedPercent: 25),
+            mode: .target,
+            timing: wallTiming
+        )
+        check(reading.text == "200%", "target mode must quote the pace index, got \(reading.text)")
         check(reading.hasValue, "a pace index that exists is a value")
+        check(Pace.PercentMode.target.rawValue == "pace", "target mode must preserve the legacy preference")
     }
 
-    private static func testPaceModeSaysNothingWhileTheWindowIsYoung() {
+    private static func testTargetModeSaysNothingWhileTheWindowIsYoung() {
         // The budget number must NOT stand in here. Both readings share one
-        // column, so a budget percentage printed under a pace heading is
-        // indistinguishable from a pace one and quietly means something else —
-        // which is exactly how "2% of pace" and "2% of budget" came to look
+        // column, so a budget percentage printed under a target heading is
+        // indistinguishable from a target one and quietly means something else —
+        // which is exactly how "2% of target" and "2% of budget" came to look
         // like the same reading for a window that had just reset.
-        let reading = Pace.reading(window(percent: 3, elapsedPercent: 0.5), mode: .pace, now: now)
+        let reading = Pace.reading(
+            window(percent: 3, elapsedPercent: 0.5),
+            mode: .target,
+            timing: wallTiming
+        )
         check(
             reading.text == Pace.noReading,
-            "a window too young for a pace must print a dash, got \(reading.text)"
+            "a window too young for a target comparison must print a dash, got \(reading.text)"
         )
-        check(!reading.hasValue, "an absent pace must not claim to have a value")
-        check(reading.text != "3%", "the budget number must never stand in for a pace")
+        check(!reading.hasValue, "an absent target comparison must not claim to have a value")
+        check(reading.text != "3%", "the budget number must never stand in for a target comparison")
     }
 
     private static func testPaceIsPrintedSoonerThanItIsColoured() {
@@ -312,44 +344,315 @@ enum RegressionTests {
         // decide which window the menu bar speaks for.
         let young = window(percent: 2, elapsedPercent: 2)
         check(
-            Pace.reading(young, mode: .pace, now: now).text == "100%",
+            Pace.reading(young, mode: .target, timing: wallTiming).text == "100%",
             "a window past the display floor must print its pace"
         )
         check(
-            Pace.ratio(young, now: now) == nil,
+            Pace.ratio(young, timing: wallTiming) == nil,
             "the same window must still be too young to be given a severity tier"
         )
     }
 
     private static func testPaceReadingIsCapped() {
-        // 100% of the budget spent in 5% of the window is 2000% of pace, which
+        // 100% of the budget spent against a 5% target is a 2000% pace index,
         // would widen the menu bar item without telling the reader anything.
         let runaway = window(percent: 100, elapsedPercent: 5)
-        let reading = Pace.reading(runaway, mode: .pace, now: now)
+        let reading = Pace.reading(runaway, mode: .target, timing: wallTiming)
         check(reading.text == "999%", "a runaway pace must be capped, got \(reading.text)")
 
-        let tooltip = Pace.tooltip(source: nil, window: runaway, now: now)
+        let tooltip = Pace.tooltip(source: nil, window: runaway, timing: wallTiming)
         check(
-            tooltip.contains("999% of pace"),
+            tooltip.contains("999% of target"),
             "the tooltip must agree with the capped pace reading, got \(tooltip)"
         )
-        check(!tooltip.contains("2000% of pace"), "the tooltip must not expose the uncapped reading")
+        check(!tooltip.contains("2000% of target"), "the tooltip must not expose the uncapped reading")
     }
 
     private static func testTooltipStatesBothReadings() {
         let tooltip = Pace.tooltip(
             source: "Claude 5h",
             window: window(percent: 50, elapsedPercent: 25),
-            now: now
+            timing: wallTiming
         )
-        for expected in ["Claude 5h", "200% of pace", "50% of the budget", "25% of the window"] {
+        for expected in ["Claude 5h", "200% of target", "50% of the budget", "25% target"] {
             check(tooltip.contains(expected), "tooltip must state \(expected), got: \(tooltip)")
         }
 
-        // With no pace to state it has to say why rather than quote a number.
-        let young = Pace.tooltip(source: nil, window: window(percent: 3, elapsedPercent: 2), now: now)
-        check(!young.contains("of pace"), "a window with no pace must not be given one")
+        // With no target comparison to state it has to say why rather than quote a number.
+        let young = Pace.tooltip(
+            source: nil,
+            window: window(percent: 3, elapsedPercent: 2),
+            timing: wallTiming
+        )
+        check(!young.contains("of target"), "a young window must not be given a target comparison")
         check(young.contains("3% of the budget"), "the budget is stated either way")
+    }
+
+    private static func testVerdictUsesTargetLanguage() {
+        let report = Report(
+            providers: [provider(name: "Claude", windows: [window(percent: 50, elapsedPercent: 25)])],
+            date: now
+        )
+        let verdict = Pace.verdict(report, mode: .target, timing: wallTiming)
+        check(verdict.headline == "Well above target", "the verdict must use target language")
+        check(verdict.line.contains("200% of target"), "the verdict must name the target comparison")
+        check(!verdict.line.lowercased().contains("pace"), "user-facing verdicts must not say pace")
+    }
+
+    // ----------------------------------------------------------------- //
+    // Working-hours targets and pace.
+    // ----------------------------------------------------------------- //
+
+    private static func testWorkingHoursRedistributeShortWindow() {
+        let calendar = utcCalendar()
+        let start = date(2026, 7, 27, 17, 0, calendar: calendar)
+        let reset = date(2026, 7, 27, 22, 0, calendar: calendar)
+        let current = date(2026, 7, 27, 18, 0, calendar: calendar)
+        let schedule = WorkSchedule(
+            enabled: true,
+            weekdays: [.monday],
+            startMinute: 17 * 60,
+            endMinute: 19 * 60
+        )
+        let timing = Pace.Timing(now: current, schedule: schedule, calendar: calendar)
+        let quota = quotaWindow(start: start, reset: reset, percent: 20)
+
+        let target = Pace.target(quota, timing: timing)
+        check(target?.basis == .workingHours, "the overlapping short window must use working hours")
+        check(close(target?.percent, 50), "one of two usable hours must produce a 50% target")
+        check(
+            close(Pace.paceIndex(quota, timing: timing), 40),
+            "20% spent against a 50% target must produce a 40% pace index"
+        )
+        check(
+            Pace.tooltip(source: nil, window: quota, timing: timing).contains("working hours"),
+            "the tooltip must name the working-hours basis"
+        )
+    }
+
+    private static func testWorkingHoursSwitchBackToWallClock() {
+        let calendar = utcCalendar()
+        let start = date(2026, 7, 27, 17, 0, calendar: calendar)
+        let reset = date(2026, 7, 27, 22, 0, calendar: calendar)
+        let current = date(2026, 7, 27, 20, 0, calendar: calendar)
+        let schedule = WorkSchedule(
+            enabled: true,
+            weekdays: [.monday],
+            startMinute: 17 * 60,
+            endMinute: 19 * 60
+        )
+        let timing = Pace.Timing(now: current, schedule: schedule, calendar: calendar)
+        let quota = quotaWindow(start: start, reset: reset, percent: 20)
+
+        let target = Pace.target(quota, timing: timing)
+        check(target?.basis == .wallClock, "after 19:00 the same window must use wall clock")
+        check(close(target?.percent, 60), "three of five wall hours must produce a 60% target")
+        check(
+            Pace.tooltip(source: nil, window: quota, timing: timing).contains("wall clock"),
+            "the tooltip must name the wall-clock basis when the feature is enabled"
+        )
+    }
+
+    private static func testWorkingHoursSpreadAWeekAcrossAllSelectedHours() {
+        let calendar = utcCalendar()
+        let start = date(2026, 7, 27, 0, 0, calendar: calendar)
+        let reset = date(2026, 8, 3, 0, 0, calendar: calendar)
+        let schedule = WorkSchedule(
+            enabled: true,
+            weekdays: WorkSchedule.defaultWeekdays,
+            startMinute: 9 * 60,
+            endMinute: 19 * 60
+        )
+        let quota = quotaWindow(start: start, reset: reset, percent: 25)
+
+        let wednesday = Pace.Timing(
+            now: date(2026, 7, 29, 14, 0, calendar: calendar),
+            schedule: schedule,
+            calendar: calendar
+        )
+        let target = Pace.target(quota, timing: wednesday)
+        check(target?.basis == .workingHours, "the weekly window must use its scheduled hours")
+        check(
+            close(target?.percent, 50),
+            "25 of the week's 50 working hours must produce a 50% target"
+        )
+        check(
+            close(Pace.paceIndex(quota, timing: wednesday), 50),
+            "25% spent against a 50% target must produce a 50% pace index"
+        )
+
+        let saturday = Pace.Timing(
+            now: date(2026, 8, 1, 12, 0, calendar: calendar),
+            schedule: schedule,
+            calendar: calendar
+        )
+        let weekend = Pace.target(quota, timing: saturday)
+        check(weekend?.basis == .wallClock, "the weekly window must switch to wall clock on Saturday")
+        check(
+            close(weekend?.percent, 132.0 / 168.0 * 100),
+            "weekend wall-clock progress must keep moving"
+        )
+    }
+
+    private static func testWorkingHoursZeroOverlapFallsBackToWallClock() {
+        let calendar = utcCalendar()
+        let schedule = WorkSchedule(
+            enabled: true,
+            weekdays: [.monday],
+            startMinute: 9 * 60,
+            endMinute: 18 * 60
+        )
+        let current = date(2026, 7, 27, 10, 0, calendar: calendar)
+        let quota = quotaWindow(
+            start: date(2026, 7, 28, 20, 0, calendar: calendar),
+            reset: date(2026, 7, 29, 1, 0, calendar: calendar),
+            percent: 0
+        )
+        let timing = Pace.Timing(now: current, schedule: schedule, calendar: calendar)
+
+        check(
+            Pace.target(quota, timing: timing)?.basis == .wallClock,
+            "a window with no scheduled overlap must fall back to wall clock"
+        )
+    }
+
+    private static func testWorkingHoursDisabledUsesWallClock() {
+        let calendar = utcCalendar()
+        let start = date(2026, 7, 27, 17, 0, calendar: calendar)
+        let reset = date(2026, 7, 27, 22, 0, calendar: calendar)
+        let schedule = WorkSchedule(
+            enabled: false,
+            weekdays: [.monday],
+            startMinute: 17 * 60,
+            endMinute: 19 * 60
+        )
+        let timing = Pace.Timing(
+            now: date(2026, 7, 27, 18, 0, calendar: calendar),
+            schedule: schedule,
+            calendar: calendar
+        )
+        let quota = quotaWindow(start: start, reset: reset, percent: 20)
+
+        let target = Pace.target(quota, timing: timing)
+        check(target?.basis == .wallClock, "a disabled schedule must preserve the wall-clock target")
+        check(close(target?.percent, 20), "one of five wall hours must produce a 20% target")
+        check(
+            Pace.target(UsageWindow(label: "unknown", percent: 10), timing: timing) == nil,
+            "missing reset metadata must still produce no target"
+        )
+
+        let invalid = WorkSchedule(
+            enabled: true,
+            weekdays: [.monday],
+            startMinute: 9 * 60,
+            endMinute: 9 * 60
+        )
+        check(!invalid.isValid, "equal start and end times must be invalid")
+        let invalidTiming = Pace.Timing(
+            now: timing.now,
+            schedule: invalid,
+            calendar: calendar
+        )
+        check(
+            Pace.target(quota, timing: invalidTiming)?.basis == .wallClock,
+            "an invalid schedule must fall back to wall clock"
+        )
+
+        let restored = WorkSchedule(
+            enabled: true,
+            weekdayMask: schedule.weekdayMask,
+            startMinute: schedule.startMinute,
+            endMinute: schedule.endMinute
+        )
+        check(restored.weekdays == schedule.weekdays, "the persisted weekday mask must round-trip")
+    }
+
+    private static func testOvernightScheduleBelongsToItsStartDay() {
+        let calendar = utcCalendar()
+        let schedule = WorkSchedule(
+            enabled: true,
+            weekdays: [.monday],
+            startMinute: 22 * 60,
+            endMinute: 2 * 60
+        )
+        let mondayStart = date(2026, 7, 27, 21, 0, calendar: calendar)
+        let tuesdayEnd = date(2026, 7, 28, 3, 0, calendar: calendar)
+        let range = DateInterval(start: mondayStart, end: tuesdayEnd)
+
+        check(
+            schedule.isActive(
+                at: date(2026, 7, 28, 1, 0, calendar: calendar),
+                calendar: calendar
+            ),
+            "Tuesday 01:00 must belong to Monday's overnight shift"
+        )
+        check(
+            close(schedule.scheduledSeconds(in: range, calendar: calendar), 4 * 3600),
+            "the overnight shift must contribute four hours"
+        )
+    }
+
+    private static func testScheduleRespectsDST() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Europe/Paris")!
+        let schedule = WorkSchedule(
+            enabled: true,
+            weekdays: [.sunday],
+            startMinute: 60,
+            endMinute: 4 * 60
+        )
+
+        let spring = DateInterval(
+            start: date(2026, 3, 29, 0, 0, calendar: calendar),
+            end: date(2026, 3, 30, 0, 0, calendar: calendar)
+        )
+        let autumn = DateInterval(
+            start: date(2026, 10, 25, 0, 0, calendar: calendar),
+            end: date(2026, 10, 26, 0, 0, calendar: calendar)
+        )
+        check(
+            close(schedule.scheduledSeconds(in: spring, calendar: calendar), 2 * 3600),
+            "01:00–04:00 must contain two wall hours across spring-forward"
+        )
+        check(
+            close(schedule.scheduledSeconds(in: autumn, calendar: calendar), 4 * 3600),
+            "01:00–04:00 must contain four wall hours across fall-back"
+        )
+    }
+
+    private static func testScheduleUsesTheProvidedTimeZone() {
+        var utc = utcCalendar()
+        var newYork = Calendar(identifier: .gregorian)
+        newYork.timeZone = TimeZone(identifier: "America/New_York")!
+        let instant = date(2026, 7, 27, 10, 0, calendar: utc)
+        let schedule = WorkSchedule(
+            enabled: true,
+            weekdays: [.monday],
+            startMinute: 9 * 60,
+            endMinute: 18 * 60
+        )
+
+        check(schedule.isActive(at: instant, calendar: utc), "10:00 UTC must be inside the schedule")
+        check(
+            !schedule.isActive(at: instant, calendar: newYork),
+            "the same instant at 06:00 New York time must be outside the schedule"
+        )
+        utc.timeZone = TimeZone(secondsFromGMT: 0)!
+    }
+
+    private static func testScheduleBoundaryIsExact() {
+        let calendar = utcCalendar()
+        let schedule = WorkSchedule(
+            enabled: true,
+            weekdays: [.monday],
+            startMinute: 9 * 60,
+            endMinute: 18 * 60
+        )
+        let before = date(2026, 7, 27, 17, 59, calendar: calendar)
+        let end = date(2026, 7, 27, 18, 0, calendar: calendar)
+
+        check(schedule.nextBoundary(after: before, calendar: calendar) == end, "18:00 is the next boundary")
+        check(!schedule.isActive(at: end, calendar: calendar), "the schedule must be inactive at its end")
     }
 
     // ----------------------------------------------------------------- //
@@ -370,6 +673,45 @@ enum RegressionTests {
             resetsAt: Int(now.timeIntervalSince1970 + remaining),
             windowSeconds: length
         )
+    }
+
+    private static func quotaWindow(start: Date, reset: Date, percent: Double) -> UsageWindow {
+        UsageWindow(
+            label: "quota",
+            percent: percent,
+            resetsAt: Int(reset.timeIntervalSince1970),
+            windowSeconds: Int(reset.timeIntervalSince(start))
+        )
+    }
+
+    private static func utcCalendar() -> Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        return calendar
+    }
+
+    private static func date(
+        _ year: Int,
+        _ month: Int,
+        _ day: Int,
+        _ hour: Int,
+        _ minute: Int,
+        calendar: Calendar
+    ) -> Date {
+        calendar.date(
+            from: DateComponents(
+                year: year,
+                month: month,
+                day: day,
+                hour: hour,
+                minute: minute
+            )
+        )!
+    }
+
+    private static func close(_ actual: Double?, _ expected: Double, tolerance: Double = 0.01) -> Bool {
+        guard let actual else { return false }
+        return abs(actual - expected) <= tolerance
     }
 
     private static func check(_ condition: @autoclosure () -> Bool, _ message: String) {

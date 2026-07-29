@@ -94,6 +94,7 @@ private struct SettingsTab: View {
                 VStack(alignment: .leading, spacing: 14) {
                     menuBarGroup
                     displayGroup
+                    workingHoursGroup
                     alertsGroup
                     refreshGroup
                 }
@@ -173,11 +174,10 @@ private struct SettingsTab: View {
 
             DividedRows {
                 SettingRow(
-                    title: "Percentages show",
-                    subtitle: "the gauges always fill to the budget spent"
+                    title: "Percentages show"
                 ) {
                     GlassSegmented(
-                        options: [.init(Pace.PercentMode.budget, "Budget"), .init(.pace, "Pace")],
+                        options: [.init(Pace.PercentMode.budget, "Used"), .init(.target, "Vs target")],
                         selection: $preferences.percentMode,
                         fontSize: 11,
                         verticalPadding: 4
@@ -187,6 +187,14 @@ private struct SettingsTab: View {
                         store.iconPreferenceChanged()
                     }
                 }
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Target is where usage should be now to spend the quota evenly before reset.")
+                        .foregroundStyle(Glass.ink(0.62))
+                    Text("Gauges always show quota used. Working hours affect the target when active.")
+                        .foregroundStyle(Glass.ink(0.42))
+                }
+                .font(.system(size: 11))
+                .fixedSize(horizontal: false, vertical: true)
                 SettingRow(title: "Card on desktop") {
                     GlassSwitch(isOn: $preferences.showDesktopCard)
                 }
@@ -228,7 +236,7 @@ private struct SettingsTab: View {
                 )
 
                 threshold(
-                    title: "Alert when burning faster than",
+                    title: "Alert above target",
                     value: String(format: "%.1f×", preferences.paceThreshold),
                     isOn: $preferences.paceAlertsEnabled,
                     slider: $preferences.paceThreshold,
@@ -239,6 +247,60 @@ private struct SettingsTab: View {
                 )
             }
             .glassGroup()
+        }
+    }
+
+    private var workingHoursGroup: some View {
+        let schedule = preferences.workSchedule
+
+        return Group {
+            groupTitle("Working hours")
+
+            DividedRows {
+                SettingRow(
+                    title: "Use working hours for target",
+                    subtitle: "spreads each quota across your selected hours"
+                ) {
+                    GlassSwitch(isOn: $preferences.workingHoursEnabled)
+                }
+
+                SettingRow(title: "Days", enabled: preferences.workingHoursEnabled) {
+                    WorkdayPicker(
+                        selected: preferences.workingWeekdays,
+                        enabled: preferences.workingHoursEnabled
+                    ) { day, selected in
+                        preferences.setWorkingDay(day, enabled: selected)
+                    }
+                }
+
+                SettingRow(title: "Hours", enabled: preferences.workingHoursEnabled) {
+                    HStack(spacing: 7) {
+                        MinuteTimePicker(
+                            minute: $preferences.workingStartMinute,
+                            accessibilityLabel: "Working hours start",
+                            enabled: preferences.workingHoursEnabled
+                        )
+                        Text("to")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Glass.ink(preferences.workingHoursEnabled ? 0.45 : 0.3))
+                        MinuteTimePicker(
+                            minute: $preferences.workingEndMinute,
+                            accessibilityLabel: "Working hours end",
+                            enabled: preferences.workingHoursEnabled
+                        )
+                    }
+                }
+
+                HStack(spacing: 7) {
+                    Circle()
+                        .fill(workingStatusColor(schedule))
+                        .frame(width: 5, height: 5)
+                    Text(workingStatus(schedule))
+                        .font(.system(size: 11))
+                        .foregroundStyle(Glass.ink(preferences.workingHoursEnabled ? 0.58 : 0.4))
+                    Spacer(minLength: 0)
+                }
+            }
         }
     }
 
@@ -329,6 +391,22 @@ private struct SettingsTab: View {
         }
     }
 
+    private func workingStatus(_ schedule: WorkSchedule) -> String {
+        guard schedule.enabled else { return "Off · target uses wall clock" }
+        guard schedule.isValid else {
+            return "Target uses wall clock · start and end must differ"
+        }
+        return schedule.isActive(at: Date())
+            ? "Target uses working hours"
+            : "Target uses wall clock · outside working hours"
+    }
+
+    private func workingStatusColor(_ schedule: WorkSchedule) -> Color {
+        schedule.enabled && schedule.isValid && schedule.isActive(at: Date())
+            ? Pace.good
+            : Color.white.opacity(0.35)
+    }
+
     /// The last part standing is locked on: a menu bar item with nothing drawn
     /// in it cannot be clicked back open to undo the mistake.
     private func partSwitch(_ isOn: Binding<Bool>) -> some View {
@@ -343,6 +421,88 @@ private struct SettingsTab: View {
             .onChange(of: isOn.wrappedValue) { _, _ in
                 store.iconPreferenceChanged()
             }
+    }
+}
+
+// --------------------------------------------------------------------- //
+
+/// Seven independent chips rather than a segmented control: several days are
+/// selected at once, and the last one stays locked on.
+private struct WorkdayPicker: View {
+    let selected: Set<WorkSchedule.Weekday>
+    let enabled: Bool
+    let setSelected: (WorkSchedule.Weekday, Bool) -> Void
+
+    var body: some View {
+        HStack(spacing: 4) {
+            ForEach(WorkSchedule.Weekday.mondayFirst) { day in
+                let chosen = selected.contains(day)
+                Button {
+                    setSelected(day, !chosen)
+                } label: {
+                    Text(day.shortLabel)
+                        .font(.system(size: 10, weight: chosen ? .semibold : .regular))
+                        .foregroundStyle(Glass.ink(chosen ? 1 : 0.55))
+                        .frame(width: 22, height: 22)
+                        .background(
+                            Circle().fill(
+                                chosen
+                                    ? Color.white.opacity(0.23)
+                                    : Color.black.opacity(0.18)
+                            )
+                        )
+                        .overlay(
+                            Circle().strokeBorder(Color.white.opacity(chosen ? 0.17 : 0.08))
+                        )
+                }
+                .buttonStyle(.plain)
+                .focusEffectDisabled()
+                .disabled(!enabled || (chosen && selected.count == 1))
+                .accessibilityLabel(day.accessibilityLabel)
+                .accessibilityValue(chosen ? "Selected" : "Not selected")
+            }
+        }
+        .opacity(enabled ? 1 : 0.45)
+    }
+}
+
+/// Native time semantics and locale formatting, with the stored value reduced
+/// to minutes after midnight so its arbitrary date is never persisted.
+private struct MinuteTimePicker: View {
+    @Binding var minute: Int
+    let accessibilityLabel: String
+    let enabled: Bool
+
+    var body: some View {
+        DatePicker(
+            "",
+            selection: Binding(
+                get: { date(for: minute) },
+                set: { date in
+                    let parts = Calendar.autoupdatingCurrent.dateComponents([.hour, .minute], from: date)
+                    minute = (parts.hour ?? 0) * 60 + (parts.minute ?? 0)
+                }
+            ),
+            displayedComponents: .hourAndMinute
+        )
+        .labelsHidden()
+        .datePickerStyle(.field)
+        .controlSize(.small)
+        .fixedSize()
+        .disabled(!enabled)
+        .opacity(enabled ? 1 : 0.45)
+        .accessibilityLabel(accessibilityLabel)
+    }
+
+    private func date(for minute: Int) -> Date {
+        let calendar = Calendar.autoupdatingCurrent
+        let value = min(1439, max(0, minute))
+        return calendar.date(
+            bySettingHour: value / 60,
+            minute: value % 60,
+            second: 0,
+            of: Date()
+        ) ?? Date()
     }
 }
 

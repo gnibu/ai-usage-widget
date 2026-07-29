@@ -39,15 +39,83 @@ enum Pace {
         }
     }
 
-    /// Share of the window already elapsed, 0-100. Nil when the window length
-    /// or reset time is unknown, in which case absolute thresholds are used.
-    static func elapsedPercent(_ window: UsageWindow, now: Date = Date()) -> Double? {
+    enum ClockBasis {
+        case wallClock
+        case workingHours
+
+        var label: String {
+            switch self {
+            case .wallClock: return "wall clock"
+            case .workingHours: return "working hours"
+            }
+        }
+    }
+
+    /// One instant and schedule shared by every pace decision made while a
+    /// surface is rendered. This prevents a boundary crossing halfway through
+    /// a render from giving the notch and its colour different answers.
+    struct Timing {
+        let now: Date
+        let schedule: WorkSchedule
+        let calendar: Calendar
+
+        init(
+            now: Date = Date(),
+            schedule: WorkSchedule = .disabled,
+            calendar: Calendar = .autoupdatingCurrent
+        ) {
+            self.now = now
+            self.schedule = schedule
+            self.calendar = calendar
+        }
+    }
+
+    /// Where usage should be now, expressed as a share of the quota. The basis
+    /// records which clock supplied that target.
+    struct Target {
+        let percent: Double
+        let basis: ClockBasis
+    }
+
+    /// The even-spend target, 0-100. While the user is inside working hours,
+    /// the full quota is spread over every scheduled second in the window.
+    /// Outside them — or when the window contains none — wall time supplies the
+    /// target instead.
+    static func target(_ window: UsageWindow, timing: Timing = Timing()) -> Target? {
         guard let resetsAt = window.resetsAt, let length = window.windowSeconds, length > 0 else {
             return nil
         }
-        let remaining = Double(resetsAt) - now.timeIntervalSince1970
+        let reset = Date(timeIntervalSince1970: Double(resetsAt))
+        let start = reset.addingTimeInterval(-Double(length))
+
+        if timing.schedule.isActive(at: timing.now, calendar: timing.calendar) {
+            let whole = DateInterval(start: start, end: reset)
+            let total = timing.schedule.scheduledSeconds(in: whole, calendar: timing.calendar)
+            if total > 0 {
+                let end = min(reset, max(start, timing.now))
+                let passed = end > start
+                    ? timing.schedule.scheduledSeconds(
+                        in: DateInterval(start: start, end: end),
+                        calendar: timing.calendar
+                    )
+                    : 0
+                return Target(
+                    percent: min(100, max(0, passed / total * 100)),
+                    basis: .workingHours
+                )
+            }
+        }
+
+        let remaining = Double(resetsAt) - timing.now.timeIntervalSince1970
         let elapsed = Double(length) - remaining
-        return min(100, max(0, elapsed / Double(length) * 100))
+        return Target(
+            percent: min(100, max(0, elapsed / Double(length) * 100)),
+            basis: .wallClock
+        )
+    }
+
+    static func targetPercent(_ window: UsageWindow, timing: Timing = Timing()) -> Double? {
+        target(window, timing: timing)?.percent
     }
 
     /// Share of the window that has to be gone before a pace ratio is quoted at
@@ -66,9 +134,13 @@ enum Pace {
 
     /// How far ahead of an even burn the window is. 1.0 is exactly on pace.
     /// Nil before the window has run long enough for the ratio to mean anything.
-    static func ratio(_ window: UsageWindow, floor: Double = severityFloor, now: Date = Date()) -> Double? {
-        guard let elapsed = elapsedPercent(window, now: now), elapsed >= floor else { return nil }
-        return window.percent / elapsed
+    static func ratio(
+        _ window: UsageWindow,
+        floor: Double = severityFloor,
+        timing: Timing = Timing()
+    ) -> Double? {
+        guard let target = targetPercent(window, timing: timing), target >= floor else { return nil }
+        return window.percent / target
     }
 
     /// The same reading as a percentage, which is how the summary states it:
@@ -78,9 +150,9 @@ enum Pace {
     static func paceIndex(
         _ window: UsageWindow,
         floor: Double = severityFloor,
-        now: Date = Date()
+        timing: Timing = Timing()
     ) -> Double? {
-        ratio(window, floor: floor, now: now).map { $0 * 100 }
+        ratio(window, floor: floor, timing: timing).map { $0 * 100 }
     }
 
     /// Which number the percentages quote. The gauges are unaffected either
@@ -90,8 +162,9 @@ enum Pace {
         /// How much of the budget is gone. 100% is the budget spent.
         case budget
         /// How that spending compares with an even burn. 100% sits exactly on
-        /// the even-burn mark, which is the white notch on the tracks.
-        case pace
+        /// the target mark, which is the white notch on the tracks. The legacy
+        /// raw value preserves existing saved preferences.
+        case target = "pace"
     }
 
     /// A pace reading early in a window is a small number over a smaller one
@@ -99,74 +172,81 @@ enum Pace {
     /// does not, and in the menu bar it would widen the item a digit at a time.
     static let paceCeiling: Double = 999
 
-    /// What a column shows for a window that has no pace yet. Not the budget
+    /// What a column shows for a window that has no stable target comparison
+    /// yet. Not the budget
     /// number: the two readings share one column, so a budget percentage
-    /// printed under a "pace" heading is indistinguishable from a pace one and
-    /// silently means something else. The track beside it still fills to the
-    /// budget, and the reset time beside that says why the window is early.
+    /// printed under a target heading is indistinguishable from a target
+    /// comparison and silently means something else. The track beside it still
+    /// fills to the budget, and the reset time beside that says why the window
+    /// is early.
     static let noReading = "—"
 
     /// The percentage a surface prints, and whether there was one to print.
     struct Reading {
         let text: String
-        /// False when the window is too young for a pace and pace was asked
-        /// for. The surfaces dim it, so an absent reading is not mistaken for
-        /// a very small one.
+        /// False when the window is too young for a stable target comparison
+        /// and target mode was asked for. The surfaces dim it, so an absent
+        /// reading is not mistaken for a very small one.
         let hasValue: Bool
     }
 
-    static func reading(_ window: UsageWindow, mode: PercentMode, now: Date = Date()) -> Reading {
-        guard mode == .pace else {
+    static func reading(
+        _ window: UsageWindow,
+        mode: PercentMode,
+        timing: Timing = Timing()
+    ) -> Reading {
+        guard mode == .target else {
             return Reading(text: "\(Int(window.percent.rounded()))%", hasValue: true)
         }
-        guard let index = paceIndex(window, floor: displayFloor, now: now) else {
+        guard let index = paceIndex(window, floor: displayFloor, timing: timing) else {
             return Reading(text: noReading, hasValue: false)
         }
         return Reading(text: "\(Int(min(paceCeiling, index).rounded()))%", hasValue: true)
     }
 
-    /// What a pace percentage is measured against. Said once per tooltip, not
+    /// What a target percentage is measured against. Said once per tooltip, not
     /// once per window in it.
-    static let paceExplainer = "100% of pace is spending exactly in step with the clock."
+    static let targetExplainer = "100% of target means usage is exactly where it should be now."
 
     /// The line behind the menu bar item. A bare "142%" cannot say which of the
     /// two readings it is, so the tooltip states both and how far into the
     /// window they were taken.
     ///
-    /// `explains` appends `paceExplainer`; leave it off when several of these
+    /// `explains` appends `targetExplainer`; leave it off when several of these
     /// are being stacked and the caller adds the sentence itself.
     static func tooltip(
         source: String?,
         window: UsageWindow,
         explains: Bool = true,
-        now: Date = Date()
+        timing: Timing = Timing()
     ) -> String {
         let spent = "\(Int(window.percent.rounded()))% of the budget spent"
         let lead = source.map { "\($0) — " } ?? ""
+        let target = target(window, timing: timing)
 
-        guard let index = paceIndex(window, now: now), let elapsed = elapsedPercent(window, now: now)
-        else {
-            return "\(lead)\(spent). Too early in the window to judge the pace."
+        guard let index = paceIndex(window, timing: timing), let target else {
+            let basis = target.map { basisSentence($0, timing: timing) } ?? ""
+            return "\(lead)\(spent). Too early in the window to compare with the target.\(basis)"
         }
         let reading = """
-            \(lead)\(Int(min(paceCeiling, index).rounded()))% of pace · \(spent), \
-            \(Int(elapsed.rounded()))% of the window gone.
+            \(lead)\(Int(min(paceCeiling, index).rounded()))% of target · \(spent), \
+            \(basisReading(target, timing: timing)).
             """
-        return explains ? "\(reading) \(paceExplainer)" : reading
+        return explains ? "\(reading) \(targetExplainer)" : reading
     }
 
     /// Green while spending is at or under the even-burn pace, orange when
     /// running ahead of it, red when far ahead or nearly exhausted.
-    static func color(_ window: UsageWindow, now: Date = Date()) -> Color {
-        switch severityTier(window, now: now) {
+    static func color(_ window: UsageWindow, timing: Timing = Timing()) -> Color {
+        switch severityTier(window, timing: timing) {
         case 2: return bad
         case 1: return warn
         default: return good
         }
     }
 
-    static func palette(_ window: UsageWindow, now: Date = Date()) -> Palette {
-        switch severityTier(window, now: now) {
+    static func palette(_ window: UsageWindow, timing: Timing = Timing()) -> Palette {
+        switch severityTier(window, timing: timing) {
         case 2:
             return Palette(
                 base: bad,
@@ -188,9 +268,9 @@ enum Pace {
         }
     }
 
-    private static func severityTier(_ window: UsageWindow, now: Date) -> Int {
+    private static func severityTier(_ window: UsageWindow, timing: Timing) -> Int {
         if window.percent >= 90 { return 2 }
-        guard let ratio = ratio(window, now: now) else {
+        guard let ratio = ratio(window, timing: timing) else {
             // Too early in the window for a pace ratio to mean anything.
             if window.percent >= 60 { return 2 }
             if window.percent >= 30 { return 1 }
@@ -204,11 +284,11 @@ enum Pace {
     /// Ranking used to pick which window the menu bar should speak for: the one
     /// in the most trouble. Colour tier wins first, then usage and pace break
     /// ties without collapsing high percentages into the same capped score.
-    static func severity(_ window: UsageWindow, now: Date = Date()) -> Severity {
+    static func severity(_ window: UsageWindow, timing: Timing = Timing()) -> Severity {
         Severity(
-            tier: severityTier(window, now: now),
+            tier: severityTier(window, timing: timing),
             percent: window.percent,
-            pace: ratio(window, now: now) ?? 0
+            pace: ratio(window, timing: timing) ?? 0
         )
     }
 
@@ -221,8 +301,8 @@ enum Pace {
         let line: String
         let detail: String
         let percent: Double
-        /// Share of the window elapsed, for the ring's even-burn mark.
-        let elapsed: Double?
+        /// Even-spend target, for the ring's white target mark.
+        let target: Double?
         /// "Anthropic 5h" — the row the whole summary is speaking about, named
         /// so that the ring is not an anonymous number.
         let source: String?
@@ -236,19 +316,19 @@ enum Pace {
     /// `mode` decides which reading the summary sentence quotes, so that it
     /// agrees with the column of numbers underneath it. That agreement is what
     /// labels the column: a heading over it was tried and read as clutter, and
-    /// this sentence was already on screen saying "70% of pace" in words.
+    /// this sentence is already on screen saying "70% of target" in words.
     static func verdict(
         _ report: Report?,
         mode: PercentMode = .budget,
-        now: Date = Date()
+        timing: Timing = Timing()
     ) -> Verdict {
-        guard let worst = report?.busiestWindows(limit: 1, now: now).first else {
+        guard let worst = report?.busiestWindows(limit: 1, timing: timing).first else {
             return Verdict(
                 headline: "No reading yet",
                 line: "No reading yet",
                 detail: "nothing fetched",
                 percent: 0,
-                elapsed: nil,
+                target: nil,
                 source: nil,
                 rowKey: nil,
                 color: good,
@@ -257,43 +337,51 @@ enum Pace {
         }
 
         let window = worst.window
-        let tier = severityTier(window, now: now)
+        let tier = severityTier(window, timing: timing)
         let exhausted = tier == 2 && window.percent >= 90
-        let reading = readingPhrase(window, mode: mode, now: now)
+        let reading = readingPhrase(window, mode: mode, timing: timing)
+        let basis = target(window, timing: timing)
+        let basisSuffix = timing.schedule.enabled
+            ? basis.map { " · \($0.basis.label)" } ?? " · wall clock"
+            : ""
 
         let short: String
         switch tier {
-        case 2: short = "Well ahead of pace"
-        case 1: short = "Ahead of pace"
-        default: short = "On pace"
+        case 2: short = "Well above target"
+        case 1: short = "Above target"
+        default: short = "On target"
         }
 
         return Verdict(
-            headline: exhausted ? "\(window.label) window nearly out" : (tier == 0 ? "On pace everywhere" : short),
+            headline: exhausted ? "\(window.label) window nearly out" : (tier == 0 ? "On target everywhere" : short),
             line: exhausted
-                ? "\(window.label) window nearly out — \(reading)"
-                : "\(short) — \(reading)",
-            detail: "worst: \(worst.provider.name) \(window.label), \(reading)",
+                ? "\(window.label) window nearly out — \(reading)\(basisSuffix)"
+                : "\(short) — \(reading)\(basisSuffix)",
+            detail: "worst: \(worst.provider.name) \(window.label), \(reading)\(basisSuffix)",
             percent: window.percent,
-            elapsed: elapsedPercent(window, now: now),
+            target: basis?.percent,
             source: "\(worst.provider.name) \(window.label)",
             rowKey: Report.rowKey(provider: worst.provider, window: window),
-            color: color(window, now: now),
+            color: color(window, timing: timing),
             hot: tier == 2
         )
     }
 
     /// The number the summary quotes, named. Whichever reading the rows below
-    /// are showing, said in words — "70% of pace" or "36% of the week" — so the
+    /// are showing, said in words — "70% of target" or "36% of the week" — so the
     /// bare percentages in the column inherit the noun from the sentence above
     /// them.
     ///
-    /// Pace mode still falls back to the budget here rather than to a dash. A
+    /// Target mode still falls back to the budget here rather than to a dash. A
     /// column of numbers has to be read against one heading and cannot carry
     /// a substitution, but a sentence names whatever it is quoting.
-    private static func readingPhrase(_ window: UsageWindow, mode: PercentMode, now: Date) -> String {
-        if mode == .pace, let index = paceIndex(window, floor: displayFloor, now: now) {
-            return "\(Int(min(paceCeiling, index).rounded()))% of pace"
+    private static func readingPhrase(
+        _ window: UsageWindow,
+        mode: PercentMode,
+        timing: Timing
+    ) -> String {
+        if mode == .target, let index = paceIndex(window, floor: displayFloor, timing: timing) {
+            return "\(Int(min(paceCeiling, index).rounded()))% of target"
         }
         return "\(Int(window.percent.rounded()))% of \(phrase(window.label))"
     }
@@ -309,17 +397,47 @@ enum Pace {
     /// Nil when the reading is missing or carried over from an earlier poll:
     /// what happened is said once, in the notice above the list, and a verdict
     /// read off stale numbers would be stated with more confidence than it has.
-    static func note(_ provider: Provider, now: Date = Date()) -> (text: String, color: Color)? {
+    static func note(
+        _ provider: Provider,
+        timing: Timing = Timing()
+    ) -> (text: String, color: Color)? {
         guard provider.ok, !provider.stale else { return nil }
-        guard let worst = provider.windows.max(by: { severity($0, now: now) < severity($1, now: now) })
+        guard let worst = provider.windows.max(by: {
+            severity($0, timing: timing) < severity($1, timing: timing)
+        })
         else { return ("no windows", .white.opacity(0.45)) }
 
         if worst.percent < 5 { return ("barely touched", .white.opacity(0.45)) }
-        switch severityTier(worst, now: now) {
+        switch severityTier(worst, timing: timing) {
         case 2 where worst.percent >= 90: return ("nearly out", bad)
-        case 2: return ("over budget", bad)
-        case 1: return ("ahead of pace", warn)
-        default: return ("under budget", good)
+        case 2: return ("well above target", bad)
+        case 1: return ("above target", warn)
+        default: return ("on target", good)
+        }
+    }
+
+    private static func basisReading(_ target: Target, timing: Timing) -> String {
+        switch target.basis {
+        case .workingHours:
+            return "\(Int(target.percent.rounded()))% target based on working hours"
+        case .wallClock where timing.schedule.enabled:
+            return "\(Int(target.percent.rounded()))% target based on wall clock"
+        case .wallClock:
+            return "\(Int(target.percent.rounded()))% target"
+        }
+    }
+
+    private static func basisSentence(_ target: Target, timing: Timing) -> String {
+        guard timing.schedule.enabled else { return "" }
+        switch target.basis {
+        case .workingHours:
+            return " The target uses working hours."
+        case .wallClock where !timing.schedule.isValid:
+            return " The target uses wall clock because the working-hours range is invalid."
+        case .wallClock where !timing.schedule.isActive(at: timing.now, calendar: timing.calendar):
+            return " The target uses wall clock outside working hours."
+        case .wallClock:
+            return " The target uses wall clock because this window contains no working hours."
         }
     }
 
