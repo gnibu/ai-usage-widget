@@ -324,8 +324,16 @@ enum RegressionTests {
     private static func testPaceReadingIsCapped() {
         // 100% of the budget spent in 5% of the window is 2000% of pace, which
         // would widen the menu bar item without telling the reader anything.
-        let reading = Pace.reading(window(percent: 100, elapsedPercent: 5), mode: .pace, now: now)
+        let runaway = window(percent: 100, elapsedPercent: 5)
+        let reading = Pace.reading(runaway, mode: .pace, now: now)
         check(reading.text == "999%", "a runaway pace must be capped, got \(reading.text)")
+
+        let tooltip = Pace.tooltip(source: nil, window: runaway, now: now)
+        check(
+            tooltip.contains("999% of pace"),
+            "the tooltip must agree with the capped pace reading, got \(tooltip)"
+        )
+        check(!tooltip.contains("2000% of pace"), "the tooltip must not expose the uncapped reading")
     }
 
     private static func testTooltipStatesBothReadings() {

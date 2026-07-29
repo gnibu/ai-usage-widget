@@ -21,6 +21,8 @@ spark week  ▓───┃──────    1%  Mon 08:36
   Fill left of the tick, you are under budget; right of it, you are ahead.
 - **Colour** — pace, not absolute. Green at or under the even-burn line,
   orange up to 1.5× it, red beyond that or above 90% consumed.
+- **Percentage** — budget consumed by default, or pace when selected in Settings.
+  At 100% of pace, spending is exactly in step with the clock.
 - **Right column** — when the window resets, as a wall-clock time.
 
 ## Install
@@ -47,14 +49,14 @@ there is no `.xcodeproj`, `build.sh` assembles the bundle by hand.
 ## What you get
 
 **Menu bar.** The window in the most trouble, as its provider's logo, a ring
-filled to its consumption and tinted by its pace, and the percentage. Any of the
-three can be switched off, and you can widen it to as many as four windows,
-which are simply the busiest ones — two Claude windows if Claude owns the two
-busiest. Tick *Always keep every provider on screen* to hand each provider a
-slot first instead, so a quiet Codex stays visible beside a loud Claude at the
-cost of bumping a window that really is busier. The window's initial sits in the hole
-of the ring (`w` week, `h` 5-hour, `s` spark week), which is the one place a
-menu bar has room to spare. Click it for the dropdown.
+filled to its consumption and tinted by its pace, and the selected percentage
+reading. Any of the three can be switched off, and you can widen it to as many
+as four windows, which are simply the busiest ones — two Claude windows if
+Claude owns the two busiest. Tick *Always keep every provider on screen* to hand
+each provider a slot first instead, so a quiet Codex stays visible beside a loud
+Claude at the cost of bumping a window that really is busier. The window's
+initial sits in the hole of the ring (`w` week, `h` 5-hour, `s` spark week),
+which is the one place a menu bar has room to spare. Click it for the dropdown.
 
 **Dropdown.** Two tabs on a pane of glass. *Usage* leads with one line saying
 whether you are fine — "On pace everywhere", or how far ahead of an even burn
@@ -77,9 +79,10 @@ moment a window resets, the slate is wiped and the next crossing is announced
 again.
 
 The Settings tab groups them the way System Settings does: *Menu bar* (which
-parts to draw, how many windows), *Display* (desktop card on/off, its layer,
-open at login), *Alerts* (both thresholds, on sliders rather than steppers), and
-*Refresh* (5, 15, 30 or 60 minutes).
+parts to draw, how many windows), *Display* (whether percentages show budget
+spent or pace, desktop card on/off, its layer, open at login), *Alerts* (both
+thresholds, on sliders rather than steppers), and *Refresh* (5, 15, 30 or 60
+minutes).
 
 ### Why not a WidgetKit widget
 

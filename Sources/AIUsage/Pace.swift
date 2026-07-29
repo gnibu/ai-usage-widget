@@ -149,7 +149,7 @@ enum Pace {
             return "\(lead)\(spent). Too early in the window to judge the pace."
         }
         let reading = """
-            \(lead)\(Int(index.rounded()))% of pace · \(spent), \
+            \(lead)\(Int(min(paceCeiling, index).rounded()))% of pace · \(spent), \
             \(Int(elapsed.rounded()))% of the window gone.
             """
         return explains ? "\(reading) \(paceExplainer)" : reading
