@@ -38,9 +38,10 @@ struct RowMetrics {
 /// provider with the word for how that provider on its own is doing.
 struct DesktopUsageCard: View {
     @EnvironmentObject private var store: UsageStore
+    @ObservedObject private var preferences = Preferences.shared
 
     var body: some View {
-        let verdict = Pace.verdict(store.report)
+        let verdict = Pace.verdict(store.report, mode: preferences.percentMode)
 
         VStack(alignment: .leading, spacing: 18) {
             header(verdict)
@@ -51,7 +52,12 @@ struct DesktopUsageCard: View {
 
             if let report = store.report {
                 ForEach(report.providers) { provider in
-                    ProviderBlock(provider: provider, metrics: .card, worstRow: verdict.rowKey)
+                    ProviderBlock(
+                        provider: provider,
+                        metrics: .card,
+                        mode: preferences.percentMode,
+                        worstRow: verdict.rowKey
+                    )
                 }
             } else {
                 Text(store.isRefreshing ? "fetching…" : "no data yet")
@@ -103,9 +109,10 @@ struct DesktopUsageCard: View {
 /// 1b — the Usage tab: one summary pill, then the same rows a size down.
 struct MenuUsageView: View {
     @EnvironmentObject private var store: UsageStore
+    @ObservedObject private var preferences = Preferences.shared
 
     var body: some View {
-        let verdict = Pace.verdict(store.report)
+        let verdict = Pace.verdict(store.report, mode: preferences.percentMode)
 
         VStack(alignment: .leading, spacing: 16) {
             summary(verdict)
@@ -118,6 +125,7 @@ struct MenuUsageView: View {
                         ProviderBlock(
                             provider: provider,
                             metrics: .menu,
+                            mode: preferences.percentMode,
                             showsNote: false,
                             worstRow: verdict.rowKey
                         )
@@ -208,6 +216,10 @@ struct OutageNotice: View {
 struct ProviderBlock: View {
     let provider: Provider
     let metrics: RowMetrics
+    /// Which reading the percentage column quotes. Passed down rather than read
+    /// from `Preferences` here, so one observer at the top of each surface
+    /// redraws the whole list.
+    var mode: Pace.PercentMode = .budget
     var showsNote: Bool = true
     /// The row the summary above is speaking for, marked here so the reader can
     /// trace the ring back to the window it came from.
@@ -249,6 +261,7 @@ struct ProviderBlock: View {
                     UsageRow(
                         window: window,
                         metrics: metrics,
+                        mode: mode,
                         isWorst: worstRow == Report.rowKey(provider: provider, window: window)
                     )
                 }
@@ -310,9 +323,12 @@ struct BrandMark: View {
 struct UsageRow: View {
     let window: UsageWindow
     let metrics: RowMetrics
+    var mode: Pace.PercentMode = .budget
     var isWorst: Bool = false
 
     var body: some View {
+        let reading = Pace.reading(window, mode: mode)
+
         HStack(spacing: metrics.gap) {
             // The dot sits in a gutter every row pays for, so marking a row
             // moves nothing.
@@ -335,10 +351,13 @@ struct UsageRow: View {
                 glows: metrics.glows
             )
 
-            Text("\(Int(window.percent.rounded()))%")
+            // Dimmed when there is nothing to report and when the window is too
+            // young to have a pace, so a dash reads as "not yet" rather than as
+            // a reading in its own right.
+            Text(reading.text)
                 .font(.system(size: metrics.percentSize, weight: .semibold))
                 .monospacedDigit()
-                .foregroundStyle(Glass.ink(window.percent < 0.5 ? 0.55 : 1))
+                .foregroundStyle(Glass.ink(window.percent < 0.5 || !reading.hasValue ? 0.55 : 1))
                 .frame(width: metrics.percent, alignment: .trailing)
 
             Text(Pace.resetLabel(window.resetsAt))

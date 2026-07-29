@@ -22,6 +22,12 @@ enum RegressionTests {
         testFailedPollKeepsTheLastReading()
         testCarriedReadingIsDroppedOnceItIsOld()
         testCarriedWindowIsDroppedOnceItHasReset()
+        testBudgetModeQuotesTheBudget()
+        testPaceModeQuotesThePaceIndex()
+        testPaceModeSaysNothingWhileTheWindowIsYoung()
+        testPaceIsPrintedSoonerThanItIsColoured()
+        testPaceReadingIsCapped()
+        testTooltipStatesBothReadings()
         print("All regression tests passed")
     }
 
@@ -269,6 +275,73 @@ enum RegressionTests {
         let onlySpent = Report(providers: [provider(name: "Claude", windows: [spent])], date: now)
         let emptied = Report(providers: [failed], date: later).carryingOver(from: onlySpent, now: later)
         check(!emptied.providers[0].ok, "a provider whose every carried window has reset is not ok")
+    }
+
+    private static func testBudgetModeQuotesTheBudget() {
+        // Half the budget a quarter of the way in — 50 against the budget, 200
+        // against the clock. Budget mode must not be tempted by the latter.
+        let reading = Pace.reading(window(percent: 50, elapsedPercent: 25), mode: .budget, now: now)
+        check(reading.text == "50%", "budget mode must quote the budget, got \(reading.text)")
+        check(reading.hasValue, "a budget reading always has a value")
+    }
+
+    private static func testPaceModeQuotesThePaceIndex() {
+        let reading = Pace.reading(window(percent: 50, elapsedPercent: 25), mode: .pace, now: now)
+        check(reading.text == "200%", "pace mode must quote the pace index, got \(reading.text)")
+        check(reading.hasValue, "a pace index that exists is a value")
+    }
+
+    private static func testPaceModeSaysNothingWhileTheWindowIsYoung() {
+        // The budget number must NOT stand in here. Both readings share one
+        // column, so a budget percentage printed under a pace heading is
+        // indistinguishable from a pace one and quietly means something else —
+        // which is exactly how "2% of pace" and "2% of budget" came to look
+        // like the same reading for a window that had just reset.
+        let reading = Pace.reading(window(percent: 3, elapsedPercent: 0.5), mode: .pace, now: now)
+        check(
+            reading.text == Pace.noReading,
+            "a window too young for a pace must print a dash, got \(reading.text)"
+        )
+        check(!reading.hasValue, "an absent pace must not claim to have a value")
+        check(reading.text != "3%", "the budget number must never stand in for a pace")
+    }
+
+    private static func testPaceIsPrintedSoonerThanItIsColoured() {
+        // Between the two floors: settled enough to print next to the reset
+        // time that explains it, not settled enough to recolour the row or to
+        // decide which window the menu bar speaks for.
+        let young = window(percent: 2, elapsedPercent: 2)
+        check(
+            Pace.reading(young, mode: .pace, now: now).text == "100%",
+            "a window past the display floor must print its pace"
+        )
+        check(
+            Pace.ratio(young, now: now) == nil,
+            "the same window must still be too young to be given a severity tier"
+        )
+    }
+
+    private static func testPaceReadingIsCapped() {
+        // 100% of the budget spent in 5% of the window is 2000% of pace, which
+        // would widen the menu bar item without telling the reader anything.
+        let reading = Pace.reading(window(percent: 100, elapsedPercent: 5), mode: .pace, now: now)
+        check(reading.text == "999%", "a runaway pace must be capped, got \(reading.text)")
+    }
+
+    private static func testTooltipStatesBothReadings() {
+        let tooltip = Pace.tooltip(
+            source: "Claude 5h",
+            window: window(percent: 50, elapsedPercent: 25),
+            now: now
+        )
+        for expected in ["Claude 5h", "200% of pace", "50% of the budget", "25% of the window"] {
+            check(tooltip.contains(expected), "tooltip must state \(expected), got: \(tooltip)")
+        }
+
+        // With no pace to state it has to say why rather than quote a number.
+        let young = Pace.tooltip(source: nil, window: window(percent: 3, elapsedPercent: 2), now: now)
+        check(!young.contains("of pace"), "a window with no pace must not be given one")
+        check(young.contains("3% of the budget"), "the budget is stated either way")
     }
 
     // ----------------------------------------------------------------- //

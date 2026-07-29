@@ -39,6 +39,14 @@ final class Preferences: ObservableObject {
         didSet { defaults.set(menuBarFairShare, forKey: Keys.menuBarFairShare) }
     }
 
+    /// What every percentage in the app quotes — the budget spent, or that
+    /// spending measured against the clock. One knob for all three surfaces:
+    /// the same number meaning two different things in the menu bar and in the
+    /// card below it is worse than either reading on its own.
+    @Published var percentMode: Pace.PercentMode {
+        didSet { defaults.set(percentMode.rawValue, forKey: Keys.percentMode) }
+    }
+
     /// The free-standing card on the desktop.
     @Published var showDesktopCard: Bool {
         didSet { defaults.set(showDesktopCard, forKey: Keys.showDesktopCard) }
@@ -97,6 +105,7 @@ final class Preferences: ObservableObject {
         static let showWindow = "showWindowInMenuBar"
         static let menuBarSlots = "menuBarSlots"
         static let menuBarFairShare = "menuBarFairShare"
+        static let percentMode = "percentMode"
         static let showDesktopCard = "showDesktopCard"
         static let desktopCardFloats = "desktopCardFloats"
         static let desktopCardAnchor = "desktopCardAnchor"
@@ -115,6 +124,7 @@ final class Preferences: ObservableObject {
             Keys.showWindow: true,
             Keys.menuBarSlots: 1,
             Keys.menuBarFairShare: false,
+            Keys.percentMode: Pace.PercentMode.budget.rawValue,
             Keys.showDesktopCard: true,
             Keys.desktopCardFloats: false,
             Keys.usageThreshold: 90.0,
@@ -129,6 +139,8 @@ final class Preferences: ObservableObject {
         showWindowInMenuBar = defaults.bool(forKey: Keys.showWindow)
         menuBarSlots = max(1, defaults.integer(forKey: Keys.menuBarSlots))
         menuBarFairShare = defaults.bool(forKey: Keys.menuBarFairShare)
+        percentMode = defaults.string(forKey: Keys.percentMode)
+            .flatMap(Pace.PercentMode.init(rawValue:)) ?? .budget
         showDesktopCard = defaults.bool(forKey: Keys.showDesktopCard)
         desktopCardFloats = defaults.bool(forKey: Keys.desktopCardFloats)
         usageThreshold = defaults.double(forKey: Keys.usageThreshold)

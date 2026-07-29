@@ -172,6 +172,21 @@ private struct SettingsTab: View {
             groupTitle("Display")
 
             DividedRows {
+                SettingRow(
+                    title: "Percentages show",
+                    subtitle: "the gauges always fill to the budget spent"
+                ) {
+                    GlassSegmented(
+                        options: [.init(Pace.PercentMode.budget, "Budget"), .init(.pace, "Pace")],
+                        selection: $preferences.percentMode,
+                        fontSize: 11,
+                        verticalPadding: 4
+                    )
+                    .frame(width: 160)
+                    .onChange(of: preferences.percentMode) { _, _ in
+                        store.iconPreferenceChanged()
+                    }
+                }
                 SettingRow(title: "Card on desktop") {
                     GlassSwitch(isOn: $preferences.showDesktopCard)
                 }
