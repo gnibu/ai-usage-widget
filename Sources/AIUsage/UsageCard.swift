@@ -71,7 +71,7 @@ struct DesktopUsageCard: View {
             )
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(verdict.source.map { "WORST — \($0.uppercased())" } ?? "AI USAGE")
+                Text(verdict.source.map { "WORST — \($0.uppercased())" } ?? "TOKENS ON TRACK")
                     .font(.system(size: 11, weight: .regular))
                     .kerning(1.4)
                     .foregroundStyle(Glass.ink(0.5))

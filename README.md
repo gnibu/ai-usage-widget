@@ -1,11 +1,13 @@
-# ai-usage-widget
+# Tokens on Track
 
-A macOS menu bar app showing how much of your **Claude Code** and **Codex**
+**Use every token. Never run dry.**
+
+Tokens on Track is a macOS menu bar app showing how much of your **Claude Code** and **Codex**
 quota you have burned, and whether you are burning it faster than the window
 refills. Refreshes every 15 minutes, and tells you when you are running hot.
 
 ```
-AI USAGE                          05:07
+TOKENS ON TRACK                   05:07
 Claude                             MAX
 5h          ▓▓▓─┃──────   18%     07:59
 week        ▓▓▓▓┃──────   22%  Sat 21:00
@@ -29,7 +31,7 @@ cd ai-usage-widget
 ./build.sh --install
 ```
 
-That compiles, wraps the binary in `AI Usage.app`, ad-hoc signs it, copies it to
+That compiles, wraps the binary in `Tokens on Track.app`, ad-hoc signs it, copies it to
 `/Applications` and launches it. Drop `--install` to build into `.build/` and
 leave `/Applications` alone.
 
@@ -158,7 +160,7 @@ copy with `AI_USAGE_ICONS=$PWD/Resources/Icons`, or just use `./build.sh`.
 
 macOS hides status items when the bar runs out of room, and menu bar managers
 (Bartender, Ice, Hidden Bar) park them off-screen by default. Check the app is
-alive with `pgrep -fl "AI Usage"`, then look in your manager's hidden section.
+alive with `pgrep -fl "Tokens on Track"`, then look in your manager's hidden section.
 
 **Desktop card missing**
 
@@ -169,7 +171,7 @@ that is no longer attached, it comes back to the top right on the next launch.
 **No notifications**
 
 The app asks for permission on first launch. If it was refused, re-enable it
-under System Settings → Notifications → AI Usage. Notifications need the app to
+under System Settings → Notifications → Tokens on Track. Notifications need the app to
 be signed, which `build.sh` handles — running the raw `swift build` binary skips
 them on purpose.
 
@@ -198,8 +200,8 @@ Hit **Refresh**; if that fails the per-provider error says why.
 ## Uninstall
 
 ```sh
-osascript -e 'quit app "AI Usage"'
-rm -rf "/Applications/AI Usage.app"
+osascript -e 'quit app "Tokens on Track"'
+rm -rf "/Applications/Tokens on Track.app"
 rm -rf ~/.local/share/ai-usage
 defaults delete io.github.ai-usage
 ```
