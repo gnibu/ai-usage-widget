@@ -6,6 +6,8 @@ Tokens on Track is a macOS menu bar app showing how much of your **Claude Code**
 quota you have burned, and whether you are burning it faster than the window
 refills. Refreshes every 15 minutes, and tells you when you are running hot.
 
+<img src="docs/screenshots/menubar.png" width="163" alt="The menu bar item: a Claude mark with a green ring at 70% marked w, and a second at 53% marked h.">
+
 ```
 TOKENS ON TRACK                   05:07
 Claude                             MAX
@@ -68,6 +70,8 @@ the worst window is — then a row per window, with a **Refresh** button beside
 the tabs. *Settings* holds everything else, so opening it can no longer push the
 reading off the bottom of the screen.
 
+<img src="docs/screenshots/dropdown-usage.png" width="430" alt="The dropdown on the Usage tab: On target everywhere, with a row for each Claude and Codex window.">
+
 **Desktop card.** The same reading, free-standing and roomier: a ring for the
 worst window, the summary line, and a block per provider with a word for how
 that provider on its own is doing. The whole card lights red from the inside
@@ -76,6 +80,8 @@ anywhere; the position is remembered by its top left corner, so it stays put
 when a row appears. It sits just above the desktop icons and behind every window
 by default — set *Card layer* to *Floating* to keep it in front instead.
 Right-click it for refresh, hide and quit.
+
+<img src="docs/screenshots/desktop-card.png" width="460" alt="The desktop card: a ring for the worst window beside the summary line, then a block for Claude and one for Codex.">
 
 **Notifications.** One alert when a window passes your threshold, one when it is
 above your target multiple. Each fires at most once per window; the
@@ -87,6 +93,10 @@ parts to draw, how many windows), *Display* (whether percentages show *Used* or
 *Vs target*, desktop card on/off, its layer, open at login), *Working hours*
 (selected days and one shared time range), *Alerts* (both thresholds, on
 sliders rather than steppers), and *Refresh* (5, 15, 30 or 60 minutes).
+
+<img src="docs/screenshots/dropdown-settings.png" width="430" alt="The Settings tab, showing the Menu bar and Display groups.">
+
+Screenshots are captured by `.agents/skills/glass-ui-changes/capture.sh`.
 
 ### Working-hours target
 
