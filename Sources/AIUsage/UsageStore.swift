@@ -27,25 +27,72 @@ final class UsageStore: ObservableObject {
 
     static var cacheURL: URL { stateDirectory.appendingPathComponent("usage.json") }
 
-    private var timer: Timer?
-    private var preferenceWatch: AnyCancellable?
+    private var refreshTimer: Timer?
+    private var scheduleBoundaryTimer: Timer?
+    private var workSchedule = WorkSchedule.disabled
+    private var preferenceWatches: Set<AnyCancellable> = []
+    private var clockObservers: [NSObjectProtocol] = []
 
     private init() {
+        let preferences = Preferences.shared
+        workSchedule = preferences.workSchedule
         loadCache()
         redrawIcon()
 
-        preferenceWatch = Preferences.shared.$refreshMinutes
+        preferences.$refreshMinutes
             .removeDuplicates()
             .sink { [weak self] minutes in self?.scheduleTimer(minutes: minutes) }
+            .store(in: &preferenceWatches)
 
-        NSWorkspace.shared.notificationCenter.addObserver(
-            forName: NSWorkspace.didWakeNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor in self?.refreshIfStale(olderThan: 300) }
+        Publishers.CombineLatest4(
+            preferences.$workingHoursEnabled,
+            preferences.$workingWeekdays,
+            preferences.$workingStartMinute,
+            preferences.$workingEndMinute
+        )
+        .map { enabled, weekdays, start, end in
+            WorkSchedule(
+                enabled: enabled,
+                weekdays: weekdays,
+                startMinute: start,
+                endMinute: end
+            )
         }
+        .removeDuplicates()
+        .dropFirst()
+        .sink { [weak self] schedule in
+            self?.workScheduleChanged(schedule)
+        }
+        .store(in: &preferenceWatches)
 
+        clockObservers = [
+            NSWorkspace.shared.notificationCenter.addObserver(
+                forName: NSWorkspace.didWakeNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor in
+                    self?.clockContextChanged()
+                    self?.refreshIfStale(olderThan: 300)
+                }
+            },
+            NotificationCenter.default.addObserver(
+                forName: .NSSystemClockDidChange,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor in self?.clockContextChanged() }
+            },
+            NotificationCenter.default.addObserver(
+                forName: .NSSystemTimeZoneDidChange,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor in self?.clockContextChanged() }
+            },
+        ]
+
+        scheduleNextBoundary()
         Task { await refresh() }
     }
 
@@ -57,10 +104,15 @@ final class UsageStore: ObservableObject {
     }
 
     /// What the menu bar speaks for.
-    func menuBarWindows(limit: Int) -> [(provider: Provider, window: UsageWindow)] {
-        report?.busiestWindows(
+    func menuBarWindows(
+        limit: Int,
+        timing: Pace.Timing? = nil
+    ) -> [(provider: Provider, window: UsageWindow)] {
+        let timing = timing ?? Pace.Timing(schedule: workSchedule)
+        return report?.busiestWindows(
             limit: limit,
-            fairShare: Preferences.shared.menuBarFairShare
+            fairShare: Preferences.shared.menuBarFairShare,
+            timing: timing
         ) ?? []
     }
 
@@ -85,7 +137,7 @@ final class UsageStore: ObservableObject {
     // ----------------------------------------------------------------- //
 
     private func scheduleTimer(minutes: Double) {
-        timer?.invalidate()
+        refreshTimer?.invalidate()
         let interval = max(60, minutes * 60)
         let timer = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
             Task { @MainActor in await self?.refresh() }
@@ -93,34 +145,40 @@ final class UsageStore: ObservableObject {
         // Let the system coalesce the wake-up; a minute either way is fine.
         timer.tolerance = interval * 0.2
         RunLoop.main.add(timer, forMode: .common)
-        self.timer = timer
+        refreshTimer = timer
     }
 
     private func redrawIcon() {
         let preferences = Preferences.shared
-        let shown = menuBarWindows(limit: preferences.menuBarSlots)
+        let timing = Pace.Timing(schedule: workSchedule)
+        let shown = menuBarWindows(limit: preferences.menuBarSlots, timing: timing)
         let segments = shown.map {
             StatusIcon.Segment(
                 provider: $0.provider.name,
                 window: $0.window.label,
                 percent: $0.window.percent,
-                text: Pace.reading($0.window, mode: preferences.percentMode).text,
-                color: Pace.color($0.window)
+                text: Pace.reading(
+                    $0.window,
+                    mode: preferences.percentMode,
+                    timing: timing
+                ).text,
+                color: Pace.color($0.window, timing: timing)
             )
         }
 
         // One line per segment drawn, in the order they appear in the bar, and
-        // the sentence explaining pace once at the end rather than on each.
+        // the sentence explaining the target once at the end rather than on each.
         let lines = shown.map {
             Pace.tooltip(
                 source: "\($0.provider.name) \($0.window.label)",
                 window: $0.window,
-                explains: false
+                explains: false,
+                timing: timing
             )
         }
         statusTooltip = lines.isEmpty
             ? "Tokens on Track — no reading yet"
-            : (lines + [Pace.paceExplainer]).joined(separator: "\n")
+            : (lines + [Pace.targetExplainer]).joined(separator: "\n")
 
         var parts: StatusIcon.Parts = []
         if preferences.showLogoInMenuBar { parts.insert(.mark) }
@@ -134,6 +192,43 @@ final class UsageStore: ObservableObject {
     /// Re-render after a preference change that only affects the icon.
     func iconPreferenceChanged() {
         redrawIcon()
+    }
+
+    /// Preference edits update every surface immediately but never manufacture
+    /// a notification. Only an actual clock boundary or provider refresh is an
+    /// alert evaluation point.
+    private func workScheduleChanged(_ schedule: WorkSchedule) {
+        workSchedule = schedule
+        redrawIcon()
+        scheduleNextBoundary()
+    }
+
+    private func clockContextChanged() {
+        redrawIcon()
+        if let report {
+            Notifier.evaluate(report, evaluateUsage: false)
+        }
+        scheduleNextBoundary()
+    }
+
+    private func scheduleNextBoundary() {
+        scheduleBoundaryTimer?.invalidate()
+        scheduleBoundaryTimer = nil
+        guard let boundary = workSchedule.nextBoundary(after: Date()) else { return }
+
+        let timer = Timer(fire: boundary, interval: 0, repeats: false) { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                self.redrawIcon()
+                if let report = self.report {
+                    Notifier.evaluate(report, evaluateUsage: false)
+                }
+                self.scheduleNextBoundary()
+            }
+        }
+        timer.tolerance = 1
+        RunLoop.main.add(timer, forMode: .common)
+        scheduleBoundaryTimer = timer
     }
 
     private func loadCache() {

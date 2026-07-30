@@ -156,11 +156,13 @@ final class DesktopCard {
 /// card is glanced at, not read, so the state has to survive peripheral vision.
 private struct CardWindowView: View {
     @EnvironmentObject private var store: UsageStore
+    @ObservedObject private var preferences = Preferences.shared
 
     var body: some View {
-        let hot = Pace.verdict(store.report).hot
+        let timing = Pace.Timing(schedule: preferences.workSchedule)
+        let hot = Pace.verdict(store.report, timing: timing).hot
 
-        DesktopUsageCard()
+        DesktopUsageCard(timing: timing)
             .padding(EdgeInsets(top: 20, leading: 22, bottom: 18, trailing: 22))
             // The drop shadow is the panel's own: a SwiftUI one would be
             // clipped by the window it is drawn inside.

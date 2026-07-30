@@ -47,6 +47,33 @@ final class Preferences: ObservableObject {
         didSet { defaults.set(percentMode.rawValue, forKey: Keys.percentMode) }
     }
 
+    /// Optional local schedule used to redistribute the target while the user
+    /// is currently inside it. The provider windows themselves are unchanged.
+    @Published var workingHoursEnabled: Bool {
+        didSet { defaults.set(workingHoursEnabled, forKey: Keys.workingHoursEnabled) }
+    }
+
+    @Published private(set) var workingWeekdays: Set<WorkSchedule.Weekday> {
+        didSet { defaults.set(workSchedule.weekdayMask, forKey: Keys.workingWeekdays) }
+    }
+
+    @Published var workingStartMinute: Int {
+        didSet { defaults.set(workingStartMinute, forKey: Keys.workingStartMinute) }
+    }
+
+    @Published var workingEndMinute: Int {
+        didSet { defaults.set(workingEndMinute, forKey: Keys.workingEndMinute) }
+    }
+
+    var workSchedule: WorkSchedule {
+        WorkSchedule(
+            enabled: workingHoursEnabled,
+            weekdays: workingWeekdays,
+            startMinute: workingStartMinute,
+            endMinute: workingEndMinute
+        )
+    }
+
     /// The free-standing card on the desktop.
     @Published var showDesktopCard: Bool {
         didSet { defaults.set(showDesktopCard, forKey: Keys.showDesktopCard) }
@@ -106,6 +133,10 @@ final class Preferences: ObservableObject {
         static let menuBarSlots = "menuBarSlots"
         static let menuBarFairShare = "menuBarFairShare"
         static let percentMode = "percentMode"
+        static let workingHoursEnabled = "workingHoursEnabled"
+        static let workingWeekdays = "workingWeekdays"
+        static let workingStartMinute = "workingStartMinute"
+        static let workingEndMinute = "workingEndMinute"
         static let showDesktopCard = "showDesktopCard"
         static let desktopCardFloats = "desktopCardFloats"
         static let desktopCardAnchor = "desktopCardAnchor"
@@ -125,6 +156,15 @@ final class Preferences: ObservableObject {
             Keys.menuBarSlots: 1,
             Keys.menuBarFairShare: false,
             Keys.percentMode: Pace.PercentMode.budget.rawValue,
+            Keys.workingHoursEnabled: false,
+            Keys.workingWeekdays: WorkSchedule(
+                enabled: false,
+                weekdays: WorkSchedule.defaultWeekdays,
+                startMinute: 9 * 60,
+                endMinute: 18 * 60
+            ).weekdayMask,
+            Keys.workingStartMinute: 9 * 60,
+            Keys.workingEndMinute: 18 * 60,
             Keys.showDesktopCard: true,
             Keys.desktopCardFloats: false,
             Keys.usageThreshold: 90.0,
@@ -141,6 +181,15 @@ final class Preferences: ObservableObject {
         menuBarFairShare = defaults.bool(forKey: Keys.menuBarFairShare)
         percentMode = defaults.string(forKey: Keys.percentMode)
             .flatMap(Pace.PercentMode.init(rawValue:)) ?? .budget
+        workingHoursEnabled = defaults.bool(forKey: Keys.workingHoursEnabled)
+        workingWeekdays = WorkSchedule(
+            enabled: false,
+            weekdayMask: defaults.integer(forKey: Keys.workingWeekdays),
+            startMinute: defaults.integer(forKey: Keys.workingStartMinute),
+            endMinute: defaults.integer(forKey: Keys.workingEndMinute)
+        ).weekdays
+        workingStartMinute = min(1439, max(0, defaults.integer(forKey: Keys.workingStartMinute)))
+        workingEndMinute = min(1439, max(0, defaults.integer(forKey: Keys.workingEndMinute)))
         showDesktopCard = defaults.bool(forKey: Keys.showDesktopCard)
         desktopCardFloats = defaults.bool(forKey: Keys.desktopCardFloats)
         usageThreshold = defaults.double(forKey: Keys.usageThreshold)
@@ -148,6 +197,19 @@ final class Preferences: ObservableObject {
         paceThreshold = defaults.double(forKey: Keys.paceThreshold)
         paceAlertsEnabled = defaults.bool(forKey: Keys.paceAlerts)
         refreshMinutes = defaults.double(forKey: Keys.refreshMinutes)
+    }
+
+    /// The last selected weekday cannot be removed: an enabled empty schedule
+    /// would look configured while silently behaving like wall clock.
+    func setWorkingDay(_ day: WorkSchedule.Weekday, enabled: Bool) {
+        var next = workingWeekdays
+        if enabled {
+            next.insert(day)
+        } else {
+            guard next.count > 1 else { return }
+            next.remove(day)
+        }
+        workingWeekdays = next
     }
 
     // ----------------------------------------------------------------- //

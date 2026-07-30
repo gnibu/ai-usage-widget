@@ -16,7 +16,7 @@ enum StatusIcon {
         var window: String = ""
         /// Fills the ring. Always the share of the budget spent, whichever
         /// reading the text beside it quotes — a ring needs a number with an
-        /// end to it, and pace has none.
+        /// end to it, and a pace rate has none.
         var percent: Double?
         /// The percentage as printed, already formatted by `Pace.reading` so
         /// that the icon has no say in which of the two readings it is.

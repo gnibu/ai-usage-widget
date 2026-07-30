@@ -27,9 +27,14 @@ enum Notifier {
     }
 
     /// Compare a fresh report against what has already been announced.
-    static func evaluate(_ report: Report, preferences: Preferences = .shared) {
+    static func evaluate(
+        _ report: Report,
+        preferences: Preferences = .shared,
+        evaluateUsage: Bool = true
+    ) {
         guard isBundled else { return }
         var marks = loadMarks()
+        let timing = Pace.Timing(schedule: preferences.workSchedule)
 
         // Carried-over numbers were already judged when they were fresh; a
         // stale provider must not be able to raise an alert twice.
@@ -43,7 +48,8 @@ enum Notifier {
                     mark = Mark(resetsAt: window.resetsAt)
                 }
 
-                if preferences.usageAlertsEnabled,
+                if evaluateUsage,
+                   preferences.usageAlertsEnabled,
                    !mark.usageSent,
                    window.percent >= preferences.usageThreshold {
                     mark.usageSent = true
@@ -59,12 +65,13 @@ enum Notifier {
                 if preferences.paceAlertsEnabled,
                    !mark.paceSent,
                    window.percent >= 10,
-                   let ratio = Pace.ratio(window), ratio > preferences.paceThreshold {
+                   let ratio = Pace.ratio(window, timing: timing),
+                   ratio > preferences.paceThreshold {
                     mark.paceSent = true
                     post(
-                        title: "\(provider.name) \(window.label) burning fast",
+                        title: "\(provider.name) \(window.label) above target",
                         body: String(
-                            format: "%.0f%% used at %.1f× the even pace. Resets %@.",
+                            format: "%.0f%% used at %.1f× target. Resets %@.",
                             window.percent, ratio, Pace.resetLabel(window.resetsAt)
                         ),
                         id: "\(key)/pace/\(window.resetsAt ?? 0)"
