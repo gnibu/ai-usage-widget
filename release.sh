@@ -99,16 +99,15 @@ mkdir -p "$DIST_DIR"
 # --------------------------------------------------------------------- #
 echo "==> compiling universal binary"
 
-SLICES=""
+set --
 for triple in $TRIPLES; do
     echo "    ${triple}"
     swift build -c release --triple "$triple"
-    SLICES="${SLICES} $(swift build -c release --triple "$triple" --show-bin-path)/AIUsage"
+    set -- "$@" "$(swift build -c release --triple "$triple" --show-bin-path)/AIUsage"
 done
 
-# shellcheck disable=SC2086 # SLICES is a deliberate list of paths.
-lipo -create -output "${WORK}/AIUsage" $SLICES
-lipo -info "${WORK}/AIUsage" | sed 's/^/    /'
+lipo -create -output "${WORK}/AIUsage" "$@"
+lipo -info "${WORK}/AIUsage"
 
 # --------------------------------------------------------------------- #
 # Assemble the bundle
@@ -138,7 +137,7 @@ printf 'APPL????' > "$BUNDLE/Contents/PkgInfo"
 echo "==> signing app"
 
 codesign --force --options runtime --timestamp --sign "$DEVELOPER_ID" "$BUNDLE"
-codesign --verify --strict --verbose=2 "$BUNDLE" 2>&1 | sed 's/^/    /'
+codesign --verify --strict --verbose=2 "$BUNDLE"
 
 # --------------------------------------------------------------------- #
 # Notarize the app
@@ -178,7 +177,7 @@ ditto -c -k --keepParent "$BUNDLE" "${WORK}/app.zip"
 notarize "${WORK}/app.zip" "app"
 
 echo "==> stapling app"
-xcrun stapler staple "$BUNDLE" | sed 's/^/    /'
+xcrun stapler staple "$BUNDLE"
 
 # --------------------------------------------------------------------- #
 # Disk image
@@ -197,7 +196,7 @@ hdiutil create \
     -volname "${APP_NAME} ${VERSION}" \
     -srcfolder "$DMG_ROOT" \
     -fs HFS+ -format UDZO -ov \
-    "$DMG" | sed 's/^/    /'
+    "$DMG"
 
 echo "==> signing dmg"
 codesign --force --timestamp --sign "$DEVELOPER_ID" "$DMG"
@@ -205,7 +204,7 @@ codesign --force --timestamp --sign "$DEVELOPER_ID" "$DMG"
 notarize "$DMG" "dmg"
 
 echo "==> stapling dmg"
-xcrun stapler staple "$DMG" | sed 's/^/    /'
+xcrun stapler staple "$DMG"
 
 # --------------------------------------------------------------------- #
 # Verify the way Gatekeeper will
@@ -216,10 +215,10 @@ xcrun stapler staple "$DMG" | sed 's/^/    /'
 # --------------------------------------------------------------------- #
 echo "==> verifying"
 
-spctl --assess --type exec --verbose=4 "$BUNDLE" 2>&1 | sed 's/^/    app: /'
-spctl --assess --type open --context context:primary-signature --verbose=4 "$DMG" 2>&1 | sed 's/^/    dmg: /'
-xcrun stapler validate "$BUNDLE" | sed 's/^/    /'
-xcrun stapler validate "$DMG" | sed 's/^/    /'
+spctl --assess --type exec --verbose=4 "$BUNDLE"
+spctl --assess --type open --context context:primary-signature --verbose=4 "$DMG"
+xcrun stapler validate "$BUNDLE"
+xcrun stapler validate "$DMG"
 
 SIZE="$(du -h "$DMG" | cut -f1 | tr -d ' ')"
 echo

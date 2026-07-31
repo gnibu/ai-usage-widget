@@ -50,11 +50,12 @@ caffeinate -u -t 300 &
 trap 'kill %1 2>/dev/null || true' EXIT
 
 # The dropdown's window id changes every time it opens, so everything is looked
-# up fresh. Layer 101 is the panel; the card sits at a large negative layer.
+# up fresh. Layer 101 is the panel; the card is identified by its fixed width so
+# this also works when its level is set to Floating.
 # Fields are: id x y w h layer onscreen.
 panel_id()    { "$WINS" "$PID" | awk '$6=="layer=101" && $7=="onscreen=true" {print $1}'; }
 panel_origin(){ "$WINS" "$PID" | awk '$6=="layer=101" && $7=="onscreen=true" {print $2, $3}'; }
-card_id()     { "$WINS" "$PID" | awk '$6 ~ /layer=-/ && $7=="onscreen=true" {print $1}'; }
+card_id()     { "$WINS" "$PID" | awk '$4==460 && $7=="onscreen=true" {print $1}'; }
 
 shot() { screencapture -x -l "$1" -o -t png "$2" && echo "    $2  $(file -b "$2" | cut -d, -f2 | tr -d ' ')"; }
 
@@ -99,15 +100,15 @@ FX="$1"; FY="$2"
 "$CLICK" "$((FX + 270))" "$((FY + 29))"
 sleep 1
 PANEL="$(panel_id)"
-if [ -n "$PANEL" ]; then
-    shot "$PANEL" "${OUT}/dropdown-settings.png"
-    # Settings is a taller pane than Usage. Same height means the tab was
-    # missed and this is the Usage tab wearing the wrong filename.
-    H=$(sips -g pixelHeight "${OUT}/dropdown-settings.png" | awk '/pixelHeight/{print $2}')
-    UH=$(sips -g pixelHeight "${OUT}/dropdown-usage.png" | awk '/pixelHeight/{print $2}')
-    [ "$H" != "$UH" ] || fail "Settings tab click missed — captured the Usage tab again.
+[ -n "$PANEL" ] || fail 'the Settings tab click closed the dropdown.
+       Re-measure the tab centre against docs/screenshots/dropdown-usage.png.'
+shot "$PANEL" "${OUT}/dropdown-settings.png"
+# Settings is a taller pane than Usage. Same height means the tab was
+# missed and this is the Usage tab wearing the wrong filename.
+H=$(sips -g pixelHeight "${OUT}/dropdown-settings.png" | awk '/pixelHeight/{print $2}')
+UH=$(sips -g pixelHeight "${OUT}/dropdown-usage.png" | awk '/pixelHeight/{print $2}')
+[ "$H" != "$UH" ] || fail "Settings tab click missed — captured the Usage tab again.
        Re-measure the tab centre against ${OUT}/dropdown-usage.png."
-fi
 
 # TODO: the Working hours group sits below the fold and needs a scroll before it
 # can be captured. Not automated yet.
