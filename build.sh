@@ -26,6 +26,7 @@ rm -rf "$BUNDLE"
 mkdir -p "$BUNDLE/Contents/MacOS" "$BUNDLE/Contents/Resources"
 cp "$BINARY" "$BUNDLE/Contents/MacOS/AIUsage"
 cp Resources/Info.plist "$BUNDLE/Contents/Info.plist"
+cp Resources/AppIcon.icns "$BUNDLE/Contents/Resources/AppIcon.icns"
 cp -R Resources/Icons "$BUNDLE/Contents/Resources/Icons"
 printf 'APPL????' > "$BUNDLE/Contents/PkgInfo"
 
@@ -53,7 +54,13 @@ if [ "${1:-}" = "--install" ]; then
     rm -rf "${INSTALL_DIR}/${LEGACY_APP_NAME}.app"
     cp -R "$BUNDLE" "${INSTALL_DIR}/"
     open "${INSTALL_DIR}/${APP_NAME}.app"
+    echo
+    echo "    ${INSTALL_DIR}/${APP_NAME}.app"
     echo "    running — look for the ring in the menu bar"
 else
+    # Absolute, because the script cd's to its own directory and the caller may
+    # not have been there — a relative .build path is not one they can act on.
+    echo
+    echo "    $(pwd)/${BUNDLE}"
     echo "    built. Install with: $0 --install"
 fi

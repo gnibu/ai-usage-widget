@@ -44,15 +44,33 @@ swift build && ./build.sh --install    # relaunches /Applications/Tokens on Trac
 PID=$(pgrep -f "/Applications/Tokens on Track.app")
 osascript -e "tell application \"System Events\" to tell (first process whose unix id is $PID) to get {position, size} of menu bar item 1 of menu bar 1"
 # -> 3179, 3, 147, 24   (x, y, w, h)
-cliclick c:3252,15                     # centre of the item
+swiftc -O .agents/skills/glass-ui-changes/click.swift -o /tmp/click
+/tmp/click 3252 15                     # centre of the item
 ```
 
 - The app has no main menu, so the status item is **`menu bar 1`**, not `menu bar 2`.
   (`menu bar 2` is right for apps that also own a normal menu bar.)
 - `perform action "AXPress"` does *not* open it — the button acts on mouse-up.
-  Use `cliclick`.
-- Screen coordinates here are 1:1 with screenshot pixels. Do not halve them for
-  Retina; check with the AX position before assuming.
+- **Do not use `cliclick` for this.** It disagrees with the accessibility
+  coordinate space once a display sits at negative y, and it fails silently —
+  the cursor lands somewhere else and the panel simply never opens. Measured on
+  external-above-built-in:
+
+  ```
+  cliclick m:1687,-1425   ->  cliclick p  ->  1687,-2332    907 off
+  /tmp/click 1687 -1425   ->  cliclick p  ->  1687,-1425    exact
+  ```
+
+  `click.swift` in this directory posts a CGEvent at the AX coordinates
+  verbatim. `cliclick p` is still the right way to *read* the cursor back.
+- Screen coordinates are points; screenshot pixels depend on which display the
+  window is on. Check, do not assume — a built-in Retina panel is 2x while an
+  external 1440p one is 1x, and a two-display setup hands you both at once.
+- **The screen must be unlocked.** Behind the lock screen the app keeps running
+  and AX keeps reporting the status item's position, so the failure presents as
+  "the click did nothing" rather than "the machine is locked", and every capture
+  comes back as blurred wallpaper. Check with `screencapture -x -D1` before
+  debugging the click, and run captures under `caffeinate -u -t 900`.
 
 Confirm what opened, and get its exact frame:
 
@@ -88,6 +106,22 @@ install, and sample. The answer is in the blend:
 
 That single test is what settled the hairline. Reach for it early; it is cheaper
 than an argument.
+
+## Capturing for the README
+
+`capture.sh` in this directory does the pass. Two things it cannot do for you:
+
+- **An unfocused window lies about its controls.** Captured off-screen, the
+  Settings tab came back with every toggle rendered grey — SwiftUI draws the
+  inactive state, so a capture of a non-key window shows switches as off when
+  they are on. Anything with a control in it has to be photographed while the
+  panel is key, which means nobody may touch the machine mid-run.
+- **Translucency is backdrop-dependent.** `screencapture -l` reads the window's
+  own buffer and yields a neutral grey pane; a screen crop includes whatever the
+  glass is sampling and yields the real material. Neither is wrong, but the two
+  cannot be mixed in one set — the tints do not match. Pick per audience: `-l`
+  for the README, where reproducibility wins, and a crop over a chosen backdrop
+  when the glass itself is the point.
 
 ## Facts already established
 

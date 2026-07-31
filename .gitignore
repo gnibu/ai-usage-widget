@@ -4,3 +4,6 @@
 .build/
 .swiftpm/
 *.app/
+
+# release.sh output
+dist/
