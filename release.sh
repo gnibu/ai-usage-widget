@@ -118,6 +118,7 @@ echo "==> assembling ${BUNDLE}"
 mkdir -p "$BUNDLE/Contents/MacOS" "$BUNDLE/Contents/Resources"
 cp "${WORK}/AIUsage" "$BUNDLE/Contents/MacOS/AIUsage"
 cp Resources/Info.plist "$BUNDLE/Contents/Info.plist"
+cp Resources/AppIcon.icns "$BUNDLE/Contents/Resources/AppIcon.icns"
 cp -R Resources/Icons "$BUNDLE/Contents/Resources/Icons"
 printf 'APPL????' > "$BUNDLE/Contents/PkgInfo"
 
