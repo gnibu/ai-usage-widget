@@ -93,8 +93,9 @@ enum AgentServer {
     }
 
     static let instructions = """
-        Tokens on Track reports how much of each AI subscription quota (Claude, \
-        Codex, OpenCode Go, OpenRouter, Cursor) is used on this Mac. Call \
+        Tokens on Track reports how much of each AI subscription quota and \
+        spend budget (Claude, Codex, OpenCode Go, OpenRouter, Cursor) is used \
+        on this Mac. Call \
         get_usage before starting a task that will spend quota, and again \
         between tasks.
         """
@@ -104,13 +105,18 @@ enum AgentServer {
         "title": "Quota usage",
         "description": """
             Latest quota reading for each AI provider on this Mac. Each window \
-            reports used_percent (share of the quota spent), resets_at (when it \
-            returns to 0%) and target_percent (where usage would be if spent \
-            evenly over the window). Quota left when a window resets is lost, so \
-            remaining_percent in a window that resets soon is free to spend; \
-            when a window is out or nearly out, wait for resets_at before \
-            starting work on that provider. Readings are taken by the menu bar \
-            app every few minutes: check age_minutes and fresh.
+            reports used_percent (share spent), resets_at (when it returns to \
+            0%) and target_percent (where usage would be if spent evenly over \
+            the window). billing says what a window measures. "quota" is a \
+            subscription allowance: what is left when it resets is lost, so \
+            remaining_percent in a quota window that resets soon is free to \
+            spend. "spend" is real money (spent_usd) against a budget the user \
+            set (budget_usd): nothing is lost by leaving it unspent, so only \
+            use it when the task needs that provider, and never treat a spend \
+            window with status "no budget set" as having room. When a window \
+            is out or nearly out, wait for resets_at before starting work on \
+            that provider. Readings are taken by the menu bar app every few \
+            minutes: check age_minutes and fresh.
             """,
         "inputSchema": [
             "type": "object",
@@ -197,14 +203,26 @@ enum AgentServer {
     }
 
     private static func window(_ window: UsageWindow, timing: Pace.Timing) -> [String: Any] {
+        // Dollars mean pay-as-you-go: unspent budget is money kept, not quota
+        // thrown away at the reset, so an agent must not read it as free.
+        let spend = window.spentUSD != nil || window.budgetUSD != nil
         var entry: [String: Any] = [
             "label": window.label,
-            "used_percent": rounded(window.percent),
-            "remaining_percent": rounded(max(0, 100 - window.percent)),
+            "billing": spend ? "spend" : "quota",
         ]
         if let model = window.model { entry["model"] = model }
         if let spent = window.spentUSD { entry["spent_usd"] = rounded(spent, places: 2) }
         if let budget = window.budgetUSD { entry["budget_usd"] = rounded(budget, places: 2) }
+
+        // With no budget there is nothing to be a share of: the 0% the card
+        // keeps for these rows is a placeholder, and quoted as 100% remaining
+        // it would invite unlimited spending.
+        if spend, window.budgetUSD == nil {
+            entry["status"] = "no budget set"
+            return entry
+        }
+        entry["used_percent"] = rounded(window.percent)
+        entry["remaining_percent"] = rounded(max(0, 100 - window.percent))
 
         guard let resetsAt = window.resetsAt, resetsAt > 0 else {
             entry["status"] = "idle"

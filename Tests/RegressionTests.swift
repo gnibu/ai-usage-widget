@@ -2090,7 +2090,18 @@ enum RegressionTests {
         codex.windows = [UsageWindow(label: "week", percent: 95, resetsAt: start + 3_600, windowSeconds: 604_800)]
         var cursor = Provider(name: "Cursor")
         cursor.loggedIn = false
-        let report = Report(providers: [claude, codex, cursor], date: now.addingTimeInterval(-300))
+        var openRouter = Provider(name: "OpenRouter")
+        openRouter.loggedIn = true
+        openRouter.ok = true
+        openRouter.windows = [
+            UsageWindow(label: "day", percent: 5, resetsAt: start + 3_600, windowSeconds: 86_400,
+                        spentUSD: 0.5, budgetUSD: 10),
+            UsageWindow(label: "month", percent: 10, resetsAt: start + 86_400, windowSeconds: 2_592_000,
+                        spentUSD: 2, budgetUSD: 20),
+        ]
+        let unbudgeted = Report(providers: [openRouter], date: now)
+            .rebudgetingOpenRouter(monthlyBudget: nil, now: now)
+        let report = Report(providers: [claude, codex, cursor, openRouter], date: now.addingTimeInterval(-300))
 
         func usage(_ arguments: String) -> (text: String, isError: Bool, json: [String: Any]?) {
             let result = agentReply(
@@ -2109,7 +2120,10 @@ enum RegressionTests {
         check(all.json?["fresh"] as? Bool == true, "a five-minute-old reading is fresh")
         check(all.json?["age_minutes"] as? Int == 5, "the reading's age must be reported in minutes")
         let providers = all.json?["providers"] as? [[String: Any]] ?? []
-        check(providers.map { $0["name"] as? String } == ["Claude", "Codex"], "providers never set up must be left out")
+        check(
+            providers.map { $0["name"] as? String } == ["Claude", "Codex", "OpenRouter"],
+            "providers never set up must be left out"
+        )
 
         let windows = providers.first?["windows"] as? [[String: Any]] ?? []
         let session = windows.first ?? [:]
@@ -2122,8 +2136,24 @@ enum RegressionTests {
         check(week["status"] as? String == "reset since this reading", "a window past its reset must say so")
         check(week["target_percent"] == nil, "a reset window has no target to report")
 
-        let codexWindow = (providers.last?["windows"] as? [[String: Any]])?.first
+        check(session["billing"] as? String == "quota", "a subscription window is quota")
+        let codexWindow = (providers[1]["windows"] as? [[String: Any]])?.first
         check(codexWindow?["status"] as? String == "nearly out", "a window past 90% must read nearly out")
+
+        let budgeted = (providers.last?["windows"] as? [[String: Any]])?.last
+        check(budgeted?["billing"] as? String == "spend", "a dollar budget must be marked as spend")
+        check(close(budgeted?["remaining_percent"] as? Double, 90), "a set budget still reports its share")
+
+        let noBudget = (AgentServer.usage(unbudgeted, now: now)["providers"] as? [[String: Any]])?
+            .first?["windows"] as? [[String: Any]] ?? []
+        check(!noBudget.isEmpty, "unbudgeted spend must still be listed")
+        check(
+            noBudget.allSatisfy {
+                $0["status"] as? String == "no budget set"
+                    && $0["remaining_percent"] == nil && $0["used_percent"] == nil
+            },
+            "spend without a budget must not report room to spend"
+        )
 
         let only = usage(#"{"provider":"codex"}"#)
         let filtered = only.json?["providers"] as? [[String: Any]]
