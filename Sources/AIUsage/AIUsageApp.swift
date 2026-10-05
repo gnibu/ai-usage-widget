@@ -7,6 +7,13 @@ import SwiftUI
 @main
 enum AIUsageApp {
     static func main() {
+        // Launched by a coding agent as its MCP server rather than by the user:
+        // answer on stdio and never bring up the menu bar item.
+        if CommandLine.arguments.dropFirst().contains(AgentServer.flag) {
+            AgentServer.run(cacheURL: UsageStore.cacheURL) {
+                Preferences.storedWorkSchedule()
+            }
+        }
         let application = NSApplication.shared
         let delegate = AppDelegate()
         application.delegate = delegate

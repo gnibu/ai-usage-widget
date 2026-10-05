@@ -576,6 +576,22 @@ final class Preferences: ObservableObject {
         workingWeekdays = next
     }
 
+    /// The saved schedule read straight from UserDefaults, for the `--mcp`
+    /// process, which never builds the observable preferences or runs their
+    /// migrations. Falls back to the same values `init` registers.
+    static func storedWorkSchedule(_ defaults: UserDefaults = .standard) -> WorkSchedule {
+        func minute(_ key: String, _ fallback: Int) -> Int {
+            guard defaults.object(forKey: key) != nil else { return fallback }
+            return min(1439, max(0, defaults.integer(forKey: key)))
+        }
+        return WorkSchedule(
+            enabled: defaults.bool(forKey: Keys.workingHoursEnabled),
+            weekdayMask: defaults.integer(forKey: Keys.workingWeekdays),
+            startMinute: minute(Keys.workingStartMinute, 9 * 60),
+            endMinute: minute(Keys.workingEndMinute, 18 * 60)
+        )
+    }
+
     // ----------------------------------------------------------------- //
     // Login item — not a default, it is read back from the system.
     // ----------------------------------------------------------------- //
