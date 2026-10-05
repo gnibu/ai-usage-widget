@@ -9,9 +9,13 @@ enum Notifier {
         var resetsAt: Int?
         var usageSent = false
         var paceSent = false
+        /// Optional so marks saved before these existed still decode.
+        var lastPercent: Double?
+        var resetAnnounced: Bool?
     }
 
     private static let stateKey = "notificationMarks"
+    private static let creditsKey = "resetCreditCounts"
 
     /// UNUserNotificationCenter traps when there is no bundle around it, which
     /// is exactly the case when the raw SwiftPM binary is run for debugging.
@@ -44,17 +48,42 @@ enum Notifier {
             hiding: preferences.hiddenProviders,
             hidingModels: preferences.hiddenModelLimits
         )
+        var creditCounts = loadCreditCounts()
+        let now = Int(Date().timeIntervalSince1970)
         for provider in watched where provider.ok && !provider.stale {
+            var cleared: [String] = []
             for window in provider.windows {
                 // Keep providers' full structured model names in alert
                 // identity even when two compact labels happen to match.
                 let key = "\(provider.id)/\(window.id)"
-                var mark = marks[key] ?? Mark(resetsAt: window.resetsAt)
+                let previous = marks[key]
+                var mark = previous ?? Mark(resetsAt: window.resetsAt)
+
+                // Judged against the window as last seen, before the mark is
+                // wiped below. Only a fresh reading can say a quota cleared.
+                var announced = false
+                if evaluateUsage,
+                   let previous,
+                   previous.resetAnnounced != true,
+                   ResetWatch.quotaCleared(
+                       previousResetsAt: previous.resetsAt,
+                       previousPercent: previous.lastPercent,
+                       window: window,
+                       now: now
+                   ) {
+                    announced = true
+                    if preferences.resetAlertsEnabled { cleared.append(window.label) }
+                }
 
                 // A new reset instant means a new window: forget what we said.
                 if mark.resetsAt != window.resetsAt {
                     mark = Mark(resetsAt: window.resetsAt)
+                } else if announced {
+                    // Said when the reset time passed; the provider reporting
+                    // the next window later must not say it again.
+                    mark.resetAnnounced = true
                 }
+                if evaluateUsage { mark.lastPercent = window.percent }
 
                 if evaluateUsage,
                    preferences.usageAlertsEnabled,
@@ -88,9 +117,41 @@ enum Notifier {
 
                 marks[key] = mark
             }
+
+            if !cleared.isEmpty {
+                post(
+                    title: cleared.count == 1
+                        ? "\(provider.name) \(cleared[0]) limit reset"
+                        : "\(provider.name) limits reset",
+                    body: cleared.count == 1
+                        ? "Full quota available again."
+                        : "\(cleared.joined(separator: ", ")) — full quota available again.",
+                    id: "\(provider.id)/reset/\(now)"
+                )
+            }
+
+            if evaluateUsage, let credits = provider.resetCredits {
+                let arrived = ResetWatch.newCredits(previous: creditCounts[provider.id], current: credits)
+                if arrived > 0, preferences.resetAlertsEnabled {
+                    let total = credits.available == 1 ? "1 reset" : "\(credits.available) resets"
+                    post(
+                        title: arrived == 1
+                            ? "\(provider.name): new reset credit"
+                            : "\(provider.name): \(arrived) new reset credits",
+                        body: "\(total) available. Click the ↺ badge in Tokens on Track to use one when you hit a limit.",
+                        id: "\(provider.id)/credit/\(now)"
+                    )
+                }
+                creditCounts[provider.id] = credits.available
+            }
         }
 
         saveMarks(marks)
+        UserDefaults.standard.set(creditCounts, forKey: creditsKey)
+    }
+
+    private static func loadCreditCounts() -> [String: Int] {
+        (UserDefaults.standard.dictionary(forKey: creditsKey) as? [String: Int]) ?? [:]
     }
 
     private static func post(title: String, body: String, id: String) {

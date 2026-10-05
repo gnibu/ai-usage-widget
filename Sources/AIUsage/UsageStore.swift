@@ -213,6 +213,21 @@ final class UsageStore: ObservableObject {
         await refresh(ids: nil, full: true)
     }
 
+    /// Spend one of a provider's reset credits, then re-read that provider so
+    /// the cleared rows and the new credit count land straight away.
+    func redeemResetCredit(providerID: String) async -> Fetcher.ResetRedemption {
+        guard let entry = codexTargets.first(where: { $0.id == providerID }) else {
+            return .failed("this account no longer appears in Codex")
+        }
+        let outcome = await Fetcher.redeemCodexResetCredit(entry: entry)
+        if isRefreshing {
+            refreshAfterConnectionChange = true
+        } else {
+            await refresh(ids: [providerID], full: false)
+        }
+        return outcome
+    }
+
     /// A grant can change while the startup poll is still running. Queue one
     /// fresh poll so a just-connected provider need not wait for the timer.
     func connectionsChanged() {

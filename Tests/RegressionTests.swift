@@ -27,6 +27,11 @@ enum RegressionTests {
         testCodexCatalogMerging()
         testCodexDefaultLabels()
         testCodexAuthParsingAndDuplicateCollapse()
+        testCodexResetCreditsParsing()
+        testCodexRedemptionOutcomes()
+        testResetCreditsSurviveCacheAndCarryOver()
+        testWeeklyQuotaResetDetection()
+        testNewResetCreditDetection()
         testCodexHomeFromEnvironment()
         testMultipleCodexPollTargetOrdering()
         testCodexAdditionalLimitsAreParsedGenerically()
@@ -2176,6 +2181,98 @@ enum RegressionTests {
     private static func close(_ actual: Double?, _ expected: Double, tolerance: Double = 0.01) -> Bool {
         guard let actual else { return false }
         return abs(actual - expected) <= tolerance
+    }
+
+    private static func testCodexResetCreditsParsing() {
+        let credits = Fetcher.codexResetCredits([
+            "applicable_available_count": 0,
+            "available_count": 2,
+        ])
+        check(credits == ResetCredits(available: 2, usableNow: 0), "Codex reset credits must keep both counts")
+        check(Fetcher.codexResetCredits(nil) == nil, "a missing block must not read as zero credits")
+        check(
+            Fetcher.codexResetCredits(["available_count": 1])?.usableNow == 1,
+            "an older response without the applicable count must not lock the redeem button"
+        )
+        check(
+            Fetcher.codexResetCredits(["available_count": 1, "applicable_available_count": 5])?.usableNow == 1,
+            "usable credits can never exceed available ones"
+        )
+    }
+
+    private static func testCodexRedemptionOutcomes() {
+        check(
+            Fetcher.codexRedemption(["code": "reset", "windows_reset": 2]) == .reset(windows: 2),
+            "a successful consume must report the cleared windows"
+        )
+        check(Fetcher.codexRedemption(["code": "nothing_to_reset"]) == .nothingToReset, "nothing_to_reset must map")
+        check(Fetcher.codexRedemption(["code": "no_credit"]) == .noCredit, "no_credit must map")
+        check(Fetcher.codexRedemption(["code": "already_redeemed"]) == .alreadyRedeemed, "already_redeemed must map")
+        if case .failed = Fetcher.codexRedemption([:]) {} else {
+            check(false, "an unknown answer must be reported as a failure")
+        }
+    }
+
+    private static func testResetCreditsSurviveCacheAndCarryOver() {
+        var provider = Provider(id: "Codex", kind: "codex", name: "Codex")
+        provider.ok = true
+        provider.loggedIn = true
+        provider.windows = [UsageWindow(label: "week", percent: 40, resetsAt: Int(now.timeIntervalSince1970) + 3600, windowSeconds: 604_800)]
+        provider.resetCredits = ResetCredits(available: 2, usableNow: 1)
+        let report = Report(providers: [provider], date: now)
+        let decoded = try? JSONDecoder().decode(Report.self, from: JSONEncoder().encode(report))
+        check(decoded?.providers.first?.resetCredits == provider.resetCredits, "reset credits must round-trip the cache")
+
+        var failed = Provider(id: "Codex", kind: "codex", name: "Codex")
+        failed.error = "unreachable"
+        let carried = Report(providers: [failed], date: now).carryingOver(from: report, now: now)
+        check(carried.providers.first?.resetCredits == provider.resetCredits, "a failed poll must keep the last credit count")
+    }
+
+    private static func testWeeklyQuotaResetDetection() {
+        let t = Int(now.timeIntervalSince1970)
+        let week = 604_800
+        func window(_ percent: Double, resetsAt: Int?, seconds: Int? = week) -> UsageWindow {
+            UsageWindow(label: "week", percent: percent, resetsAt: resetsAt, windowSeconds: seconds)
+        }
+
+        check(
+            ResetWatch.quotaCleared(previousResetsAt: t + 600, previousPercent: 70, window: window(0, resetsAt: t + week), now: t),
+            "a weekly window replaced by a later, emptier one has reset (early reset credit)"
+        )
+        check(
+            ResetWatch.quotaCleared(previousResetsAt: t - 60, previousPercent: 70, window: window(70, resetsAt: t - 60), now: t),
+            "a weekly window whose reset time passed has reset even before the provider reports the next one"
+        )
+        check(
+            !ResetWatch.quotaCleared(previousResetsAt: t - 60, previousPercent: 70, window: window(0, resetsAt: t + 5 * 3600, seconds: 5 * 3600), now: t),
+            "the 5h session must never be announced"
+        )
+        check(
+            !ResetWatch.quotaCleared(previousResetsAt: t + 600, previousPercent: 70, window: window(70, resetsAt: t + 601), now: t),
+            "a reset time drifting by a second is not a new window"
+        )
+        check(
+            !ResetWatch.quotaCleared(previousResetsAt: t - 60, previousPercent: 0, window: window(0, resetsAt: t + week), now: t),
+            "a quota that was never touched has nothing worth announcing"
+        )
+        check(
+            !ResetWatch.quotaCleared(previousResetsAt: t - 2 * 86_400, previousPercent: 50, window: window(0, resetsAt: t + week), now: t),
+            "a reset that happened days ago while the app was off is not news"
+        )
+        var spend = window(0, resetsAt: t + 30 * 86_400, seconds: nil)
+        spend.budgetUSD = 20
+        check(
+            !ResetWatch.quotaCleared(previousResetsAt: t - 60, previousPercent: 50, window: spend, now: t),
+            "a spend budget rolling over is not a quota reset"
+        )
+    }
+
+    private static func testNewResetCreditDetection() {
+        check(ResetWatch.newCredits(previous: nil, current: ResetCredits(available: 2, usableNow: 0)) == 0, "the first reading is only a baseline")
+        check(ResetWatch.newCredits(previous: 1, current: ResetCredits(available: 2, usableNow: 0)) == 1, "a grant must be counted")
+        check(ResetWatch.newCredits(previous: 2, current: ResetCredits(available: 1, usableNow: 0)) == 0, "spending a credit is not a grant")
+        check(ResetWatch.newCredits(previous: 2, current: nil) == 0, "a response without credits is not a grant")
     }
 
     private static func check(_ condition: @autoclosure () -> Bool, _ message: String) {
