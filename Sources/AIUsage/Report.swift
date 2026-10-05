@@ -522,8 +522,10 @@ struct Report: Codable, Equatable {
     }
 
     /// A reading older than this is shown as stale rather than silently trusted.
+    static let staleAfter: TimeInterval = 2700
+
     var isStale: Bool {
-        Date().timeIntervalSince1970 - Double(updatedAt) > 2700
+        Date().timeIntervalSince1970 - Double(updatedAt) > Self.staleAfter
     }
 
     /// True when a poll has run and nothing landed: providers are set up, but

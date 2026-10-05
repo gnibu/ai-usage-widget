@@ -10,6 +10,9 @@ published with generated notes on the
 
 ### Added
 
+- A local MCP server (`--mcp`) with a `get_usage` tool, so a coding agent can
+  check remaining quota before each task. Settings → Agents copies a setup
+  prompt for Claude Code, Codex or any other MCP client.
 - OpenCode Go as a usage provider, with 5-hour, weekly, and monthly quota
   windows from its usage API. The direct build discovers active OpenCode
   credentials and supported environment sources; Settings can store a key in

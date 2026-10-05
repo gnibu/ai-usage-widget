@@ -68,6 +68,8 @@ enum RegressionTests {
         testStrayArgumentAfterCloseIsRejected()
         testNotLoggedInProviderIsHidden()
         testHiddenProviderIsFiltered()
+        testAgentServerSpeaksMCP()
+        testAgentServerReportsUsage()
         testHiddenScopedModelLimitsAreFiltered()
         testRecentlyActiveProviderStaysVisibleWhenUnreadable()
         testRemovedKeychainProviderIsForgotten()
@@ -2031,6 +2033,144 @@ enum RegressionTests {
                 minute: minute
             )
         )!
+    }
+
+    private static func agentReply(_ line: String, report: Report? = nil) -> [String: Any]? {
+        AgentServer.respond(to: line, load: { report }, now: now)
+            .flatMap { $0.data(using: .utf8) }
+            .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+    }
+
+    private static func testAgentServerSpeaksMCP() {
+        let hello = agentReply(
+            #"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26"}}"#
+        )?["result"] as? [String: Any]
+        check(hello?["protocolVersion"] as? String == "2025-03-26", "a supported protocol version must be echoed")
+
+        let future = agentReply(
+            #"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2099-01-01"}}"#
+        )?["result"] as? [String: Any]
+        check(
+            future?["protocolVersion"] as? String == AgentServer.protocolVersions[0],
+            "an unknown protocol version must be answered with the newest supported one"
+        )
+
+        check(
+            AgentServer.respond(to: #"{"jsonrpc":"2.0","method":"notifications/initialized"}"#, load: { nil }) == nil,
+            "notifications must not get a reply"
+        )
+
+        let tools = (agentReply(#"{"jsonrpc":"2.0","id":"a","method":"tools/list"}"#)?["result"]
+            as? [String: Any])?["tools"] as? [[String: Any]]
+        check(tools?.map { $0["name"] as? String } == [AgentServer.toolName], "tools/list must offer get_usage")
+
+        let unknown = agentReply(#"{"jsonrpc":"2.0","id":2,"method":"resources/list"}"#)
+        check((unknown?["error"] as? [String: Any])?["code"] as? Int == -32601, "unknown methods must be refused")
+        check(unknown?["id"] as? Int == 2, "an error must carry the request id")
+
+        let garbage = agentReply("not json")
+        check((garbage?["error"] as? [String: Any])?["code"] as? Int == -32700, "garbage must be a parse error")
+    }
+
+    private static func testAgentServerReportsUsage() {
+        let start = Int(now.timeIntervalSince1970)
+        var claude = Provider(name: "Claude")
+        claude.ok = true
+        claude.loggedIn = true
+        claude.plan = "max"
+        claude.windows = [
+            // Half the 5h window gone, a quarter of it spent.
+            UsageWindow(label: "5h", percent: 25, resetsAt: start + 9_000, windowSeconds: 18_000),
+            // Reset an hour ago: the 94% is no longer true.
+            UsageWindow(label: "week", percent: 94, resetsAt: start - 3_600, windowSeconds: 604_800),
+        ]
+        var codex = Provider(name: "Codex")
+        codex.ok = true
+        codex.loggedIn = true
+        codex.windows = [UsageWindow(label: "week", percent: 95, resetsAt: start + 3_600, windowSeconds: 604_800)]
+        var cursor = Provider(name: "Cursor")
+        cursor.loggedIn = false
+        var openRouter = Provider(name: "OpenRouter")
+        openRouter.loggedIn = true
+        openRouter.ok = true
+        openRouter.windows = [
+            UsageWindow(label: "day", percent: 5, resetsAt: start + 3_600, windowSeconds: 86_400,
+                        spentUSD: 0.5, budgetUSD: 10),
+            UsageWindow(label: "month", percent: 10, resetsAt: start + 86_400, windowSeconds: 2_592_000,
+                        spentUSD: 2, budgetUSD: 20),
+        ]
+        let unbudgeted = Report(providers: [openRouter], date: now)
+            .rebudgetingOpenRouter(monthlyBudget: nil, now: now)
+        let report = Report(providers: [claude, codex, cursor, openRouter], date: now.addingTimeInterval(-300))
+
+        func usage(_ arguments: String) -> (text: String, isError: Bool, json: [String: Any]?) {
+            let result = agentReply(
+                #"{"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"get_usage","arguments":"#
+                    + arguments + "}}",
+                report: report
+            )?["result"] as? [String: Any]
+            let text = ((result?["content"] as? [[String: Any]])?.first?["text"] as? String) ?? ""
+            let json = text.data(using: .utf8)
+                .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+            return (text, result?["isError"] as? Bool ?? true, json)
+        }
+
+        let all = usage("{}")
+        check(!all.isError, "get_usage must succeed with a cached reading")
+        check(all.json?["fresh"] as? Bool == true, "a five-minute-old reading is fresh")
+        check(all.json?["age_minutes"] as? Int == 5, "the reading's age must be reported in minutes")
+        let providers = all.json?["providers"] as? [[String: Any]] ?? []
+        check(
+            providers.map { $0["name"] as? String } == ["Claude", "Codex", "OpenRouter"],
+            "providers never set up must be left out"
+        )
+
+        let windows = providers.first?["windows"] as? [[String: Any]] ?? []
+        let session = windows.first ?? [:]
+        check(close(session["used_percent"] as? Double, 25), "used_percent must come from the cache")
+        check(close(session["remaining_percent"] as? Double, 75), "remaining_percent must be the complement")
+        check(close(session["target_percent"] as? Double, 50), "target_percent must be the even-spend mark")
+        check(session["resets_in_minutes"] as? Int == 150, "resets_in_minutes must count down to the reset")
+        check(session["status"] as? String == "on target", "a window under its mark is on target")
+        let week = windows.last ?? [:]
+        check(week["status"] as? String == "reset since this reading", "a window past its reset must say so")
+        check(week["target_percent"] == nil, "a reset window has no target to report")
+
+        check(session["billing"] as? String == "quota", "a subscription window is quota")
+        let codexWindow = (providers[1]["windows"] as? [[String: Any]])?.first
+        check(codexWindow?["status"] as? String == "nearly out", "a window past 90% must read nearly out")
+
+        let budgeted = (providers.last?["windows"] as? [[String: Any]])?.last
+        check(budgeted?["billing"] as? String == "spend", "a dollar budget must be marked as spend")
+        check(close(budgeted?["remaining_percent"] as? Double, 90), "a set budget still reports its share")
+
+        let noBudget = (AgentServer.usage(unbudgeted, now: now)["providers"] as? [[String: Any]])?
+            .first?["windows"] as? [[String: Any]] ?? []
+        check(!noBudget.isEmpty, "unbudgeted spend must still be listed")
+        check(
+            noBudget.allSatisfy {
+                $0["status"] as? String == "no budget set"
+                    && $0["remaining_percent"] == nil && $0["used_percent"] == nil
+            },
+            "spend without a budget must not report room to spend"
+        )
+
+        let only = usage(#"{"provider":"codex"}"#)
+        let filtered = only.json?["providers"] as? [[String: Any]]
+        check(filtered?.map { $0["id"] as? String } == ["Codex"], "the provider filter must be case-insensitive")
+        check(usage(#"{"provider":"cursor"}"#).isError, "a provider that is not set up must be an error")
+
+        let stale = AgentServer.usage(report, now: now.addingTimeInterval(Report.staleAfter + 60))
+        check(stale["fresh"] as? Bool == false && stale["note"] != nil, "an old reading must be flagged")
+
+        let missing = AgentServer.callResult(nil)
+        check(missing["isError"] as? Bool == true, "no cache at all must be reported as an error")
+
+        let prompt = AgentServer.setupPrompt(executable: "/Applications/Tokens on Track.app/Contents/MacOS/AIUsage")
+        check(
+            prompt.contains("-- '/Applications/Tokens on Track.app/Contents/MacOS/AIUsage' --mcp"),
+            "the copied command must quote a path with spaces"
+        )
     }
 
     private static func close(_ actual: Double?, _ expected: Double, tolerance: Double = 0.01) -> Bool {

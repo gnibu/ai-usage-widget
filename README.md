@@ -133,6 +133,25 @@ calculation, so they may jump at the boundary. Target alerts are never
 suppressed outside working hours. Windows with no scheduled overlap also use a
 wall-clock target.
 
+### Agents (local MCP server)
+
+A coding agent can ask Tokens on Track how much quota is left before it starts
+a task — for example to work through a to-do list overnight, only while there
+is quota to spend. *Settings → Agents → Copy setup prompt* copies instructions
+to paste into the agent; for Claude Code they boil down to:
+
+```sh
+claude mcp add --scope user tokens-on-track -- \
+  "/Applications/Tokens on Track.app/Contents/MacOS/AIUsage" --mcp
+```
+
+The server is the app's own binary started with `--mcp`, talking over stdio.
+Its one tool, `get_usage`, returns every window's used and remaining
+percentage, even-spend target, reset time and status, plus how old the reading
+is. It only reads the reading the menu bar app last saved: it never contacts a
+provider or touches a credential, so the app has to be running (and the Mac
+awake) for the numbers to move.
+
 ### Why not a WidgetKit widget
 
 The desktop card can be dragged anywhere and shares the running app's state

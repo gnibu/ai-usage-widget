@@ -108,6 +108,7 @@ private struct SettingsTab: View {
     @State private var cursorBudgetText = Preferences.shared.cursorMonthlyBudget
         .map(SettingsTab.editableBudget)
         ?? ""
+    @State private var copiedAgentPrompt = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -129,6 +130,7 @@ private struct SettingsTab: View {
                     workingHoursGroup
                     alertsGroup
                     refreshGroup
+                    agentsGroup
                     helpGroup
                 }
                 .padding(EdgeInsets(top: 4, leading: 18, bottom: 14, trailing: 18))
@@ -941,6 +943,31 @@ private struct SettingsTab: View {
                 )
             }
             .glassGroup()
+        }
+    }
+
+    private var agentsGroup: some View {
+        Group {
+            groupTitle("Agents")
+
+            DividedRows {
+                SettingRow(
+                    title: "Local MCP server",
+                    subtitle: copiedAgentPrompt
+                        ? "copied — paste it to your agent"
+                        : "lets an agent check quota before each task"
+                ) {
+                    GlassLink(title: "Copy setup prompt") {
+                        let executable = Bundle.main.executablePath ?? CommandLine.arguments[0]
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(
+                            AgentServer.setupPrompt(executable: executable),
+                            forType: .string
+                        )
+                        copiedAgentPrompt = true
+                    }
+                }
+            }
         }
     }
 

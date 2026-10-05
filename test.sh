@@ -30,6 +30,7 @@ swiftc -parse-as-library "$@" \
     Sources/AIUsage/ProviderFolderAccess.swift \
     Sources/AIUsage/BrandGlyph.swift \
     Sources/AIUsage/StatusIcon.swift \
+    Sources/AIUsage/AgentServer.swift \
     Tests/RegressionTests.swift \
     Tests/ProviderFolderAccessTests.swift \
     -o "$TEST_BINARY"
