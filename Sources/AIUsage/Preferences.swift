@@ -121,6 +121,12 @@ final class Preferences: ObservableObject {
         didSet { defaults.set(paceAlertsEnabled, forKey: Keys.paceAlerts) }
     }
 
+    /// Notify when a quota longer than the 5h session clears, and when a
+    /// provider grants a new reset credit.
+    @Published var resetAlertsEnabled: Bool {
+        didSet { defaults.set(resetAlertsEnabled, forKey: Keys.resetAlerts) }
+    }
+
     @Published var refreshMinutes: Double {
         didSet { defaults.set(refreshMinutes, forKey: Keys.refreshMinutes) }
     }
@@ -391,6 +397,7 @@ final class Preferences: ObservableObject {
         static let usageAlerts = "usageAlertsEnabled"
         static let paceThreshold = "paceThreshold"
         static let paceAlerts = "paceAlertsEnabled"
+        static let resetAlerts = "resetAlertsEnabled"
         static let refreshMinutes = "refreshMinutes"
         static let openRouterMonthlyBudget = "openRouterMonthlyBudget"
         static let showOpenRouterCosts = "showOpenRouterCosts"
@@ -443,6 +450,7 @@ final class Preferences: ObservableObject {
             Keys.usageAlerts: true,
             Keys.paceThreshold: 1.5,
             Keys.paceAlerts: true,
+            Keys.resetAlerts: true,
             Keys.refreshMinutes: 10.0,
             Keys.showOpenRouterCosts: false,
             Keys.showCursorCosts: false,
@@ -470,6 +478,7 @@ final class Preferences: ObservableObject {
         usageAlertsEnabled = defaults.bool(forKey: Keys.usageAlerts)
         paceThreshold = defaults.double(forKey: Keys.paceThreshold)
         paceAlertsEnabled = defaults.bool(forKey: Keys.paceAlerts)
+        resetAlertsEnabled = defaults.bool(forKey: Keys.resetAlerts)
         refreshMinutes = defaults.double(forKey: Keys.refreshMinutes)
         if defaults.object(forKey: Keys.openRouterMonthlyBudget) != nil {
             let value = defaults.double(forKey: Keys.openRouterMonthlyBudget)

@@ -8,6 +8,7 @@ enum Fetcher {
     static let keychainService = "Claude Code-credentials"
     static let claudeUsageURL = URL(string: "https://api.anthropic.com/api/oauth/usage")!
     static let codexUsageURL = URL(string: "https://chatgpt.com/backend-api/codex/usage")!
+    static let codexResetConsumeURL = URL(string: "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume")!
     static let openCodeGoUsageURL = URL(string: "https://opencode.ai/zen/go/v1/usage")!
     static let openRouterUsageURL = URL(string: "https://openrouter.ai/api/v1/key")!
     static let cursorUsageSummaryURL = URL(string: "https://cursor.com/api/usage-summary")!
@@ -397,6 +398,7 @@ enum Fetcher {
         )
         provider.windows += codexWindows(data["rate_limit"])
         provider.windows += codexAdditionalWindows(data["additional_rate_limits"])
+        provider.resetCredits = codexResetCredits(data["rate_limit_reset_credits"])
 
         provider.ok = !provider.windows.isEmpty
         if !provider.ok { provider.error = "no limit data" }
@@ -437,6 +439,78 @@ enum Fetcher {
     #else
     static func discoveredCodexHomes() -> [String] { [] }
     #endif
+
+    /// `rate_limit_reset_credits` from the usage response. An account without
+    /// the feature omits the block, which stays nil rather than "0 credits".
+    static func codexResetCredits(_ raw: Any?) -> ResetCredits? {
+        guard let block = raw as? [String: Any],
+              let available = (block["available_count"] as? NSNumber)?.intValue
+        else { return nil }
+        let usable = (block["applicable_available_count"] as? NSNumber)?.intValue ?? available
+        return ResetCredits(available: max(0, available), usableNow: max(0, min(usable, available)))
+    }
+
+    enum ResetRedemption: Equatable {
+        /// `windows` is how many limit windows the provider cleared.
+        case reset(windows: Int)
+        case nothingToReset
+        case noCredit
+        case alreadyRedeemed
+        case failed(String)
+
+        var message: String {
+            switch self {
+            case .reset:
+                return "One reset used — your limits are back to 0%."
+            case .nothingToReset: return "Nothing to reset right now; the credit was kept."
+            case .noCredit: return "No reset credit left on this account."
+            case .alreadyRedeemed: return "That reset was already used."
+            case .failed(let reason): return "Couldn't use a reset — \(reason)."
+            }
+        }
+    }
+
+    /// Spend one Codex reset credit, the same call Codex's own "Redeem reset"
+    /// makes. The request id makes the one retry inside safe: the backend
+    /// treats a repeat of the same id as the same redemption.
+    static func redeemCodexResetCredit(entry: CodexProfile.Entry) async -> ResetRedemption {
+        guard let raw = codexAuthData(entry: entry),
+              let auth = CodexProfile.parseAuth(raw)
+        else { return .failed("Codex login not readable") }
+
+        let response: [String: Any]
+        do {
+            response = try await requestJSONRetrying(
+                codexResetConsumeURL,
+                method: "POST",
+                headers: [
+                    "Authorization": "Bearer \(auth.accessToken)",
+                    "chatgpt-account-id": auth.accountID,
+                    "originator": "codex_cli_rs",
+                    "User-Agent": codexUserAgent,
+                    "Accept": "application/json",
+                    "Content-Type": "application/json",
+                ],
+                body: ["redeem_request_id": UUID().uuidString.lowercased()]
+            )
+        } catch let error as HTTPStatus {
+            return .failed(error.code == 401 ? "token expired, run codex once" : "HTTP \(error.code)")
+        } catch {
+            return .failed(String(error.localizedDescription.prefix(60)))
+        }
+        return codexRedemption(response)
+    }
+
+    static func codexRedemption(_ response: [String: Any]) -> ResetRedemption {
+        switch response["code"] as? String {
+        case "reset":
+            return .reset(windows: (response["windows_reset"] as? NSNumber)?.intValue ?? 0)
+        case "nothing_to_reset": return .nothingToReset
+        case "no_credit": return .noCredit
+        case "already_redeemed": return .alreadyRedeemed
+        case let other: return .failed("unexpected answer \(other ?? "none")")
+        }
+    }
 
     /// Turn one Codex rate_limit block into rows, shortest window first.
     /// Parse every named model bucket Codex sends. Unknown names are kept in

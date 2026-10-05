@@ -315,6 +315,8 @@ struct ProviderBlock: View {
     /// trace the ring back to the window it came from.
     var worstRow: String? = nil
 
+    @State private var showsCredits = false
+
     /// Rows sit under the provider name, not under the mark — icon + gap from the header.
     private var rowLeadingInset: CGFloat {
         BrandGlyph.width(for: provider.kind, height: metrics.markSize) + 9
@@ -338,6 +340,12 @@ struct ProviderBlock: View {
                     planBadge(plan)
                 }
 
+                if let credits = provider.resetCredits, credits.available > 0 {
+                    ResetCreditBadge(credits: credits, size: metrics.labelSize) {
+                        showsCredits.toggle()
+                    }
+                }
+
                 Spacer(minLength: 6)
 
                 if showsNote, let note {
@@ -345,6 +353,14 @@ struct ProviderBlock: View {
                         .font(.system(size: 12))
                         .foregroundStyle(note.color)
                 }
+            }
+
+            // Stays open after the last credit is spent, so the outcome is read.
+            if showsCredits, let credits = provider.resetCredits {
+                ResetCreditStrip(provider: provider, credits: credits, size: metrics.labelSize) {
+                    showsCredits = false
+                }
+                .padding(.leading, rowLeadingInset)
             }
 
             // Only providers with a reading reach here: one with nothing to
@@ -385,6 +401,118 @@ struct ProviderBlock: View {
                 )
         } else {
             text.foregroundStyle(Glass.ink(0.5))
+        }
+    }
+}
+
+/// A provider's free reset credits as a small coin and count beside the plan.
+/// Quiet on purpose: they matter on the day a limit is hit, not every glance.
+struct ResetCreditBadge: View {
+    let credits: ResetCredits
+    let size: CGFloat
+    let action: () -> Void
+
+    @State private var hovering = false
+
+    static let gold = Color(red: 0.94, green: 0.79, blue: 0.42)
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 3) {
+                Image(systemName: "arrow.counterclockwise.circle.fill")
+                    .font(.system(size: size - 1, weight: .semibold))
+                    .foregroundStyle(Self.gold.opacity(hovering ? 1 : 0.8))
+                Text("\(credits.available)")
+                    .font(.system(size: size - 2, weight: .semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(Glass.ink(hovering ? 0.9 : 0.6))
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .focusEffectDisabled()
+        .onHover { hovering = $0 }
+        .help(credits.available == 1 ? "1 usage reset available" : "\(credits.available) usage resets available")
+    }
+}
+
+/// Opened from the coin: what a reset does, and a confirmed way to spend one.
+/// The button only arms when the provider says a reset would clear something;
+/// otherwise it explains when the credit is worth using.
+struct ResetCreditStrip: View {
+    let provider: Provider
+    let credits: ResetCredits
+    let size: CGFloat
+    let close: () -> Void
+
+    @EnvironmentObject private var store: UsageStore
+    @State private var stage = Stage.idle
+
+    private enum Stage: Equatable {
+        case idle
+        case confirming
+        case redeeming
+        case done(String)
+    }
+
+    var body: some View {
+        let count = credits.available == 1 ? "1 reset" : "\(credits.available) resets"
+        let usable = credits.usableNow > 0 && !provider.stale
+
+        VStack(alignment: .leading, spacing: 8) {
+            switch stage {
+            case .idle:
+                text(usable
+                    ? "\(count) available. Using one clears this account's limits right away."
+                    : "\(count) saved. Nothing needs resetting yet — use one when you hit a limit, here or with /usage in Codex.")
+                HStack(spacing: 8) {
+                    GlassButton(label: "Use a reset…", enabled: usable) { stage = .confirming }
+                    GlassLink(title: "Close", action: close)
+                }
+            case .confirming:
+                text(credits.available == 1
+                    ? "Use your only reset on \(provider.name) now? This cannot be undone."
+                    : "Use one reset on \(provider.name) now? \(credits.available - 1) will remain. This cannot be undone.")
+                HStack(spacing: 8) {
+                    GlassButton(label: "Use reset", prominent: true) { redeem() }
+                    GlassLink(title: "Cancel") { stage = .idle }
+                }
+            case .redeeming:
+                HStack(spacing: 8) {
+                    GlassSpinner(size: 12)
+                    text("Resetting…")
+                }
+            case .done(let message):
+                text(message)
+                GlassLink(title: "Close", action: close)
+            }
+        }
+        .padding(.vertical, 8)
+        .padding(.horizontal, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(ResetCreditBadge.gold.opacity(0.08))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(ResetCreditBadge.gold.opacity(0.22), lineWidth: 1)
+        )
+    }
+
+    private func text(_ string: String) -> some View {
+        // The same size as the row labels beneath it.
+        Text(string)
+            .font(.system(size: size))
+            .foregroundStyle(Glass.ink(0.75))
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func redeem() {
+        stage = .redeeming
+        Task {
+            let outcome = await store.redeemResetCredit(providerID: provider.id)
+            stage = .done(outcome.message)
         }
     }
 }
@@ -447,6 +575,10 @@ struct UsageRow: View {
                     .truncationMode(.tail)
                     .minimumScaleFactor(0.75)
                     .allowsTightening(true)
+                    // Without this, stacking a second provider block under the
+                    // first shrank the first block's labels to the 0.75 floor
+                    // (rendered and compared). The scale is meant for width only.
+                    .fixedSize(horizontal: false, vertical: true)
                 if let cost {
                     Text(cost)
                         .font(.system(size: max(8, metrics.labelSize - 4)))

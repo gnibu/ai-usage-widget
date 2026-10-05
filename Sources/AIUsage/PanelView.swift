@@ -869,6 +869,13 @@ private struct SettingsTab: View {
                     colors: [Pace.warn, Pace.bad],
                     bounds: ("1.1×", "4×")
                 )
+
+                SettingRow(
+                    title: "Alert on resets",
+                    subtitle: "a weekly or longer limit clears, or a reset credit arrives"
+                ) {
+                    GlassSwitch(isOn: $preferences.resetAlertsEnabled)
+                }
             }
             .glassGroup()
         }

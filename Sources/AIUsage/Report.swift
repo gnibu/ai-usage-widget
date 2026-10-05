@@ -59,6 +59,20 @@ struct UsageWindow: Codable, Identifiable, Equatable {
     }
 }
 
+/// Free "full reset" credits a provider has granted the account. Only Codex
+/// reports them today. `usableNow` is the provider's own count of credits that
+/// would actually restore something right now; at zero a redeem is refused
+/// with "nothing to reset" rather than spent.
+struct ResetCredits: Codable, Equatable {
+    var available: Int
+    var usableNow: Int
+
+    enum CodingKeys: String, CodingKey {
+        case available
+        case usableNow = "usable_now"
+    }
+}
+
 /// One provider/model pair discovered in a structured quota response. Its
 /// normalized key is persisted; the original names remain available to the UI.
 struct ScopedModelLimit: Codable, Identifiable, Equatable {
@@ -175,6 +189,8 @@ struct Provider: Codable, Identifiable, Equatable {
     /// Non-secret origin of the credential that produced this reading. It is
     /// shown in Settings and harmless in the cache.
     var credentialSource: OpenRouterCredential.Source?
+    /// Nil when the provider does not report reset credits at all.
+    var resetCredits: ResetCredits?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -191,6 +207,7 @@ struct Provider: Codable, Identifiable, Equatable {
         case unreachable
         case staleToken = "stale_token"
         case credentialSource = "credential_source"
+        case resetCredits = "reset_credits"
     }
 
     init(name: String) {
@@ -284,6 +301,7 @@ struct Provider: Codable, Identifiable, Equatable {
         unreachable = (try? box.decode(Bool.self, forKey: .unreachable)) ?? false
         staleToken = (try? box.decode(Bool.self, forKey: .staleToken)) ?? false
         credentialSource = try? box.decodeIfPresent(OpenRouterCredential.Source.self, forKey: .credentialSource)
+        resetCredits = try? box.decodeIfPresent(ResetCredits.self, forKey: .resetCredits)
     }
 }
 
@@ -375,6 +393,7 @@ struct Report: Codable, Equatable {
             carried.credentialSource = provider.credentialSource ?? old.credentialSource
             carried.windows = live
             carried.measuredAt = measured
+            carried.resetCredits = provider.resetCredits ?? old.resetCredits
             return carried
         }
         return merged

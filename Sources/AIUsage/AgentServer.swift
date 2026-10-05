@@ -116,7 +116,10 @@ enum AgentServer {
             window with status "no budget set" as having room. When a window \
             is out or nearly out, wait for resets_at before starting work on \
             that provider. Readings are taken by the menu bar app every few \
-            minutes: check age_minutes and fresh.
+            minutes: check age_minutes and fresh. reset_credits counts free \
+            full resets the user holds; only the user decides to spend one, so \
+            when a provider is out and has usable_now credits, tell them \
+            rather than assuming the quota will come back early.
             """,
         "inputSchema": [
             "type": "object",
@@ -195,6 +198,9 @@ enum AgentServer {
         ]
         if let plan = provider.plan { entry["plan"] = plan }
         if let error = provider.error { entry["error"] = error }
+        if let credits = provider.resetCredits, credits.available > 0 {
+            entry["reset_credits"] = ["available": credits.available, "usable_now": credits.usableNow]
+        }
         if provider.stale {
             entry["stale"] = true
             if let measured = provider.measuredAt { entry["measured_at"] = timestamp(measured) }

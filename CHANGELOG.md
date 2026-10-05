@@ -10,6 +10,12 @@ published with generated notes on the
 
 ### Added
 
+- Codex usage-reset credits: a small ↺ coin with the count sits beside the
+  plan badge. Clicking it explains when a reset helps and, once Codex says a
+  reset would clear something, spends one after a confirmation.
+- Reset alerts (Settings → Alerts, on by default): a notification when a
+  weekly or longer quota clears — on schedule or early — and when a provider
+  grants a new reset credit. The 5-hour session is never announced.
 - A local MCP server (`--mcp`) with a `get_usage` tool, so a coding agent can
   check remaining quota before each task. Settings → Agents copies a setup
   prompt for Claude Code, Codex or any other MCP client.
@@ -52,6 +58,11 @@ published with generated notes on the
   the normal interval.
 - OpenRouter connection guidance now points to the manual Keychain-backed API
   key field instead of promising that another Conductor task will reconnect it.
+
+### Fixed
+
+- Row labels such as `5h` and `week` no longer render shrunk in the first
+  provider block when more than one provider is shown.
 
 ## [1.1.0] - 2026-09-16
 
