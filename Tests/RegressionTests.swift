@@ -79,6 +79,8 @@ enum RegressionTests {
         testRecentlyActiveProviderStaysVisibleWhenUnreadable()
         testRemovedKeychainProviderIsForgotten()
         testFailedPollKeepsTheLastReading()
+        testOutageDismissalLifecycle()
+        testOutageDismissalsAreAccountSpecific()
         testCarriedReadingIsDroppedOnceItIsOld()
         testCarriedWindowIsDroppedOnceItHasReset()
         testHasNoReadingOnlyWhenAPollLandedNothing()
@@ -1127,6 +1129,75 @@ enum RegressionTests {
         check(carried.windows.count == 1, "the last reading's rows must survive")
         check(carried.error != nil, "the reason for the failed poll must still be said")
         check(carried.measuredAt == good.updatedAt, "the carried rows must say when they were measured")
+    }
+
+    private static func testOutageDismissalLifecycle() {
+        let suite = "AIUsageRegressionTests.outages.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let dismissals = OutageDismissals(defaults: defaults)
+
+        var failed = Provider(name: "Codex")
+        failed.loggedIn = true
+        failed.error = "stored token went stale — run codex once"
+        check(!dismissals.isDismissed(failed), "a new warning must be visible")
+        dismissals.dismiss(failed)
+        check(dismissals.isDismissed(failed), "dismissal must hide the ongoing warning")
+
+        let restarted = OutageDismissals(defaults: defaults)
+        check(restarted.isDismissed(failed), "dismissal must survive loading fresh state")
+        var carried = failed
+        carried.ok = true
+        carried.stale = true
+        carried.name = "Codex Personal"
+        carried.measuredAt = Int(now.timeIntervalSince1970)
+        restarted.reconcile(providers: [carried])
+        carried.measuredAt! += 300
+        check(restarted.isDismissed(carried), "a carried reading's age or renamed account must not revive a warning")
+
+        var changed = failed
+        changed.error = "the service is not answering (http 503)"
+        check(!restarted.isDismissed(changed), "a different warning must appear immediately")
+        restarted.reconcile(providers: [changed])
+        check(!restarted.isDismissed(failed), "a changed problem must retire the previous acknowledgement")
+
+        restarted.dismiss(failed)
+        var healthy = carried
+        healthy.stale = false
+        healthy.error = nil
+        restarted.reconcile(providers: [healthy])
+        check(!restarted.isDismissed(failed), "the same failure after recovery must appear again")
+        check(!OutageDismissals(defaults: defaults).isDismissed(failed), "recovery must persistently clear the dismissal")
+
+        restarted.dismiss(failed)
+        restarted.reconcile(providers: [])
+        check(!restarted.isDismissed(failed), "removing an account must retire its dismissal")
+    }
+
+    private static func testOutageDismissalsAreAccountSpecific() {
+        let suite = "AIUsageRegressionTests.outage-accounts.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let dismissals = OutageDismissals(defaults: defaults)
+
+        var personal = Provider(id: "personal", kind: "codex", name: "Codex Personal")
+        personal.error = "stored token went stale"
+        var work = Provider(id: "work", kind: "codex", name: "Codex Work")
+        work.error = personal.error
+        dismissals.dismiss(personal)
+        check(!dismissals.isDismissed(work), "dismissing one account must not hide another account's identical error")
+
+        work.ok = true
+        work.error = nil
+        dismissals.reconcile(providers: [personal, work])
+        check(dismissals.isDismissed(personal), "refreshing another account must preserve the ongoing dismissal")
+
+        var missing = Provider(name: "Cursor")
+        check(OutageDismissals.reason(for: missing) == "no reading", "a failure without an error still needs a dismissible reason")
+        dismissals.dismiss(missing)
+        check(dismissals.isDismissed(missing), "the fallback no-reading warning must be dismissible")
+        missing.ok = true
+        check(OutageDismissals.reason(for: missing) == nil, "healthy accounts must have no warning signature")
     }
 
     private static func testCarriedReadingIsDroppedOnceItIsOld() {

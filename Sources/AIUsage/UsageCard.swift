@@ -232,13 +232,17 @@ struct MenuUsageView: View {
 /// rather than red: a missed poll is a gap in what we know, not a warning about
 /// spending, and the rows below still say everything we do know.
 struct OutageNotice: View {
+    @ObservedObject private var dismissals = OutageDismissals.shared
+
     /// Already filtered to what the surface draws — a hidden or never-set-up
     /// provider is not reported as an outage.
     let providers: [Provider]
     let size: CGFloat
 
     var body: some View {
-        let down = providers.filter { !$0.ok || $0.stale }
+        let down = providers.filter {
+            OutageDismissals.reason(for: $0) != nil && !dismissals.isDismissed($0)
+        }
 
         if !down.isEmpty {
             VStack(alignment: .leading, spacing: 4) {
@@ -249,6 +253,22 @@ struct OutageNotice: View {
                         Text(Self.line(provider))
                             .font(.system(size: size))
                             .fixedSize(horizontal: false, vertical: true)
+
+                        Spacer(minLength: 0)
+
+                        Button {
+                            dismissals.dismiss(provider)
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: size - 1, weight: .medium))
+                                .foregroundStyle(Glass.ink(0.5))
+                                .frame(width: 20, height: 20)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .focusEffectDisabled()
+                        .accessibilityLabel("Dismiss warning for \(provider.name)")
+                        .help("Dismiss this warning until the problem changes or happens again after recovery")
                     }
                 }
             }
@@ -259,7 +279,7 @@ struct OutageNotice: View {
     /// A stale provider still has rows below, so the notice has to say which
     /// reading those rows are — otherwise the numbers look current.
     static func line(_ provider: Provider) -> String {
-        let reason = outageReason(provider)
+        let reason = OutageDismissals.reason(for: provider) ?? "no reading"
         // Only name the reading's age when its rows are actually on screen; a
         // stale-and-empty provider shows "no recent reading" instead of rows, so
         // "· rows from …" would point at nothing.
@@ -267,15 +287,6 @@ struct OutageNotice: View {
             return "\(provider.name): \(reason)"
         }
         return "\(provider.name): \(reason) · rows from \(Pace.clockLabel(measured))"
-    }
-
-    /// What went wrong, in the reader's terms. A vanished transient Conductor
-    /// key gets an actionable route to the reliable credential field.
-    private static func outageReason(_ provider: Provider) -> String {
-        if let reconnect = OpenCodeGoCredential.reconnectMessage(for: provider) { return reconnect }
-        if let reconnect = OpenRouterCredential.reconnectMessage(for: provider) { return reconnect }
-        if let reconnect = CursorCredential.reconnectMessage(for: provider) { return reconnect }
-        return provider.error ?? "no reading"
     }
 }
 
@@ -338,6 +349,15 @@ struct ProviderBlock: View {
 
                 if let plan = provider.plan, !plan.isEmpty {
                     planBadge(plan)
+                }
+
+                if provider.stale {
+                    Text("stale")
+                        .font(.system(size: metrics.resetSize))
+                        .foregroundStyle(Glass.ink(0.5))
+                        .help(provider.measuredAt.map {
+                            "Last reading from \(Pace.clockLabel($0))"
+                        } ?? "Showing the last successful reading")
                 }
 
                 if let credits = provider.resetCredits, credits.available > 0 {

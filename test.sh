@@ -15,6 +15,7 @@ mkdir -p .build
 
 swiftc -parse-as-library "$@" \
     Sources/AIUsage/Report.swift \
+    Sources/AIUsage/OutageDismissals.swift \
     Sources/AIUsage/OpenRouter.swift \
     Sources/AIUsage/OpenRouterKeychain.swift \
     Sources/AIUsage/OpenCodeGo.swift \
