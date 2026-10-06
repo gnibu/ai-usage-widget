@@ -313,9 +313,14 @@ its own — overnight, typically. Start the relevant CLI once and the next fetch
 recovers. By design this app never refreshes tokens itself — it will not touch
 your logins.
 
-Until it recovers, the rows carry the last reading that did land, dimmed, with
-the notice saying when it was taken. They are dropped once they are three hours
-old or their window has reset, whichever comes first.
+Until it recovers, the rows carry the last reading that did land, dimmed and
+marked *stale*, with the notice saying when it was taken. They are dropped once
+they are 24 hours old or their window has reset, whichever comes first.
+
+Click the **×** beside a warning to dismiss it on both the dropdown and desktop
+card. Dismissal survives refreshes and restarts for that account and problem.
+A different warning, or a new failure after the account recovers, appears again.
+The stale label remains visible; hover it to see when the reading was taken.
 
 **`http 403` from Codex**
 

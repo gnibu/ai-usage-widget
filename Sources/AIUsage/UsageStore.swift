@@ -11,7 +11,13 @@ final class UsageStore: ObservableObject {
     /// desktop card both need it, and only one of them can own it.
     static let shared = UsageStore()
 
-    @Published private(set) var report: Report?
+    @Published private(set) var report: Report? {
+        didSet {
+            if let report {
+                OutageDismissals.shared.reconcile(providers: report.providers)
+            }
+        }
+    }
     @Published private(set) var isRefreshing = false
     @Published private(set) var hasSavedOpenRouterKey = OpenRouterKeychain.read() != nil
     @Published private(set) var hasSavedOpenCodeGoKey = OpenCodeGoKeychain.read() != nil
