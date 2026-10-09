@@ -32,6 +32,12 @@ enum RegressionTests {
         testResetCreditsSurviveCacheAndCarryOver()
         testWeeklyQuotaResetDetection()
         testNewResetCreditDetection()
+        testPaceAlertsEscalateOncePerWindow()
+        testPaceAlertsStayQuietAtTheStartOfTheWindow()
+        testSeverePaceAlertSkipsTheLowerStage()
+        testPaceAlertsRespectCustomThresholds()
+        testLegacyPaceMarksAllowEscalation()
+        testPaceAlertsUseTheActiveWorkSchedule()
         testCodexHomeFromEnvironment()
         testMultipleCodexPollTargetOrdering()
         testCodexAdditionalLimitsAreParsedGenerically()
@@ -2344,6 +2350,83 @@ enum RegressionTests {
         check(ResetWatch.newCredits(previous: 1, current: ResetCredits(available: 2, usableNow: 0)) == 1, "a grant must be counted")
         check(ResetWatch.newCredits(previous: 2, current: ResetCredits(available: 1, usableNow: 0)) == 0, "spending a credit is not a grant")
         check(ResetWatch.newCredits(previous: 2, current: nil) == 0, "a response without credits is not a grant")
+    }
+
+    private static func testPaceAlertsEscalateOncePerWindow() {
+        let offTrack = window(percent: 40, elapsedPercent: 18)
+        let wayOffTrack = window(percent: 85, elapsedPercent: 18)
+        var mark = UsageAlerts.Mark(resetsAt: offTrack.resetsAt)
+        check(mark.paceAlert(for: offTrack, threshold: 1.5, timing: wallTiming) == .offTrack, "first crossing must warn")
+        // Evaluating a candidate alone cannot consume it; failed delivery can retry.
+        check(mark.paceAlert(for: offTrack, threshold: 1.5, timing: wallTiming) == .offTrack, "unacknowledged warning must remain eligible")
+        mark.acknowledge(.offTrack)
+        check(mark.paceAlert(for: offTrack, threshold: 1.5, timing: wallTiming) == nil, "same warning must not repeat")
+        check(mark.paceAlert(for: wayOffTrack, threshold: 1.5, timing: wallTiming) == .wayOffTrack, "screenshot's 85% against 18% must escalate after the warning")
+        mark.acknowledge(.wayOffTrack)
+        check(mark.paceAlert(for: wayOffTrack, threshold: 1.5, timing: wallTiming) == nil, "severe warning must not repeat")
+        mark.acknowledge(.usage)
+        mark.lastPercent = 85
+        mark.advance(to: mark.resetsAt)
+        check(mark.severePaceSent == true && mark.usageSent, "same reset time must keep acknowledgements")
+        mark.advance(to: (mark.resetsAt ?? 0) + 1_000)
+        check(!mark.paceSent && mark.severePaceSent != true && !mark.usageSent && mark.lastPercent == nil, "a new window must clear every stage and previous usage")
+        var nextWindow = offTrack
+        nextWindow.resetsAt = mark.resetsAt
+        let nextTiming = Pace.Timing(now: now.addingTimeInterval(1_000))
+        check(mark.paceAlert(for: nextWindow, threshold: 1.5, timing: nextTiming) == .offTrack, "a reset must re-arm the early warning")
+    }
+
+    private static func testPaceAlertsStayQuietAtTheStartOfTheWindow() {
+        let mark = UsageAlerts.Mark()
+        for elapsed in [0.0, 0.5, 1, 4, 9.9, 10] {
+            check(mark.paceAlert(for: window(percent: 20, elapsedPercent: elapsed), threshold: 1.5, timing: wallTiming) == nil, "the first warning must stay quiet through 10% elapsed")
+            check(mark.paceAlert(for: window(percent: 85, elapsedPercent: elapsed), threshold: 1.5, timing: wallTiming) == nil, "even severe usage must stay quiet through 10% elapsed")
+        }
+        check(mark.paceAlert(for: window(percent: 20, elapsedPercent: 10.1), threshold: 1.5, timing: wallTiming) == .offTrack, "the first warning must become eligible after the quiet period")
+        check(mark.paceAlert(for: window(percent: 85, elapsedPercent: 10.1), threshold: 1.5, timing: wallTiming) == .wayOffTrack, "severe usage must become eligible after the quiet period")
+        check(mark.paceAlert(for: window(percent: 9, elapsedPercent: 20), threshold: 0.1, timing: wallTiming) == nil, "single-digit quota usage must still avoid rounding noise after the quiet period")
+        let noClock = UsageWindow(label: "week", percent: 85, resetsAt: nil, windowSeconds: nil)
+        check(mark.paceAlert(for: noClock, threshold: 1.5, timing: wallTiming) == nil, "a missing window clock cannot supply a pace warning")
+    }
+
+    private static func testSeverePaceAlertSkipsTheLowerStage() {
+        var mark = UsageAlerts.Mark()
+        check(mark.paceAlert(for: window(percent: 80, elapsedPercent: 20), threshold: 1.5, timing: wallTiming) == .wayOffTrack, "a first reading already far ahead must send only the severe stage")
+        mark.acknowledge(.wayOffTrack)
+        check(mark.paceAlert(for: window(percent: 40, elapsedPercent: 20), threshold: 1.5, timing: wallTiming) == nil, "recovery must not send the skipped lower warning")
+        let data = try? JSONEncoder().encode(mark)
+        let restored = data.flatMap { try? JSONDecoder().decode(UsageAlerts.Mark.self, from: $0) }
+        check(restored?.paceSent == true && restored?.severePaceSent == true, "both stages must remain acknowledged after an app restart")
+    }
+
+    private static func testPaceAlertsRespectCustomThresholds() {
+        let mark = UsageAlerts.Mark()
+        check(mark.paceAlert(for: window(percent: 30, elapsedPercent: 20), threshold: 1.5, timing: wallTiming) == nil, "the first threshold must be exceeded")
+        check(mark.paceAlert(for: window(percent: 60, elapsedPercent: 20), threshold: 1.5, timing: wallTiming) == .offTrack, "exactly 3x must remain the first stage")
+        check(mark.paceAlert(for: window(percent: 70, elapsedPercent: 20), threshold: 2, timing: wallTiming) == .offTrack, "a custom first threshold must move the severe threshold too")
+        check(mark.paceAlert(for: window(percent: 85, elapsedPercent: 20), threshold: 2, timing: wallTiming) == .wayOffTrack, "severe warning must trigger above twice the custom first threshold")
+        check(mark.paceAlert(for: window(percent: 50, elapsedPercent: 20), threshold: 1.1, timing: wallTiming) == .offTrack, "a sensitive first warning must keep the severe threshold at least 3x")
+    }
+
+    private static func testPaceAlertsUseTheActiveWorkSchedule() {
+        let calendar = utcCalendar()
+        let start = date(2026, 7, 27, 17, 0, calendar: calendar)
+        let reset = date(2026, 7, 27, 22, 0, calendar: calendar)
+        let current = date(2026, 7, 27, 18, 0, calendar: calendar)
+        let schedule = WorkSchedule(enabled: true, weekdays: [.monday], startMinute: 17 * 60, endMinute: 19 * 60)
+        let window = quotaWindow(start: start, reset: reset, percent: 40)
+        let mark = UsageAlerts.Mark(resetsAt: window.resetsAt)
+        let workTiming = Pace.Timing(now: current, schedule: schedule, calendar: calendar)
+        let wallTiming = Pace.Timing(now: current, calendar: calendar)
+        check(mark.paceAlert(for: window, threshold: 1.5, timing: workTiming) == nil, "40% used against a 50% working-hours target must not warn")
+        check(mark.paceAlert(for: window, threshold: 1.5, timing: wallTiming) == .offTrack, "same usage against a 20% wall-clock target must warn")
+    }
+
+    private static func testLegacyPaceMarksAllowEscalation() {
+        let data = Data(#"{"resetsAt":123,"usageSent":true,"paceSent":true,"lastPercent":85}"#.utf8)
+        let mark = try? JSONDecoder().decode(UsageAlerts.Mark.self, from: data)
+        check(mark?.usageSent == true && mark?.paceSent == true, "upgrades must preserve previous acknowledgements")
+        check(mark?.paceAlert(for: window(percent: 85, elapsedPercent: 18), threshold: 1.5, timing: wallTiming) == .wayOffTrack, "a legacy warning must not consume the new severe stage")
     }
 
     private static func check(_ condition: @autoclosure () -> Bool, _ message: String) {

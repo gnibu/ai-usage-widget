@@ -99,10 +99,22 @@ Right-click it for refresh, hide and quit.
 
 <img src="docs/screenshots/desktop-card.png" width="460" alt="The desktop card: a ring for the worst window beside the summary line, then a block for Claude and one for Codex.">
 
-**Notifications.** One alert when a window passes your threshold, one when it is
-above your target multiple. Each fires at most once per window; the
-moment a window resets, the slate is wiped and the next crossing is announced
-again.
+**Notifications.** One usage alert when a window passes your percentage threshold,
+plus two pace warnings: **off track** above your target multiple (1.5× by default),
+then **way off track** above twice that multiple (at least 3×). Each stage fires
+once per quota window and re-arms at reset. If the first reading is already way
+off track, it sends the stronger warning directly. Both pace stages stay quiet
+through the first 10% of the window's active time basis (working hours when
+active, wall clock otherwise), and require at least 10% of quota to be used.
+For a five-hour wall-clock window, that means no pace warnings during its first
+30 minutes. The separate usage-percentage alert still applies during this quiet
+period. Failed submissions remain eligible to retry.
+
+The app requests persistent alerts by default. For an existing installation,
+choose **System Settings → Notifications → Tokens on Track → Persistent**
+(**Alerts** on older macOS), and enable sound. Alerts stay until you dismiss them;
+macOS controls this presentation preference. Notifications also appear while
+the app's dropdown is open.
 
 The Settings tab groups them the way System Settings does: *Menu bar* (which
 parts to draw, how many windows), *Display* (whether percentages show *Used* or

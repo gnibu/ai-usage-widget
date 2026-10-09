@@ -31,6 +31,8 @@
 	<true/>
 	<key>NSHighResolutionCapable</key>
 	<true/>
+	<key>NSUserNotificationAlertStyle</key>
+	<string>alert</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>MIT licensed</string>
 </dict>

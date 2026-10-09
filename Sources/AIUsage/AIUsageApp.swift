@@ -30,8 +30,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // equivalents, so those shortcuts never reach cut:/copy:/paste:/… on
         // the focused text field. A minimal Edit menu restores them.
         NSApp.mainMenu = Self.makeMainMenu()
-        Notifier.requestAuthorization()
         MainActor.assumeIsolated {
+            Notifier.requestAuthorization()
             MenuBarItem.shared.start()
             DesktopCard.shared.start()
         }

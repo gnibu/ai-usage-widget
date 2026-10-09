@@ -112,7 +112,7 @@ final class Preferences: ObservableObject {
         didSet { defaults.set(usageAlertsEnabled, forKey: Keys.usageAlerts) }
     }
 
-    /// Notify once per window when burn rate exceeds this multiple of even pace.
+    /// First pace warning; a second fires above twice this multiple (at least 3×).
     @Published var paceThreshold: Double {
         didSet { defaults.set(paceThreshold, forKey: Keys.paceThreshold) }
     }
