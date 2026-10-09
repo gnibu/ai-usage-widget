@@ -29,6 +29,7 @@ swiftc -parse-as-library "$@" \
     Sources/AIUsage/CodexAccountAccess.swift \
     Sources/AIUsage/Fetcher.swift \
     Sources/AIUsage/ResetWatch.swift \
+    Sources/AIUsage/UsageAlerts.swift \
     Sources/AIUsage/ProviderFolderAccess.swift \
     Sources/AIUsage/BrandGlyph.swift \
     Sources/AIUsage/StatusIcon.swift \
